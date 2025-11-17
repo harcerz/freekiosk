@@ -12,7 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - 🚀 Auto-launch toggle: Enable/disable automatic app launch at device boot
 - 💡 Screen always-on feature: Keep screen awake while app is running
-- 📲 Open Settings button: Quick access to Android system settings from app
 
 ### Changed
 - 🔧 Improved Device Owner auto-launch handling with preference-based control

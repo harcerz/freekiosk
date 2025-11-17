@@ -159,7 +159,7 @@ const WebViewComponent: React.FC<WebViewComponentProps> = ({
 
             {/* Footer */}
             <Text style={styles.footerText}>
-              Version 1.0.2 • by Rushb
+              Version 1.0.3 • by Rushb
             </Text>
 
           </Animated.View>
