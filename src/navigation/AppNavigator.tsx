@@ -41,7 +41,7 @@ const AppNavigator: React.FC = () => {
           component={SettingsScreen}
           options={{
             headerShown: true,
-            title: 'Paramètres',
+            title: 'Parameters',
             headerStyle: {
               backgroundColor: '#0066cc',
             },
