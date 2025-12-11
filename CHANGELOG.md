@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ***
 
 
+## [1.1.0] - 2025-12-11
+
+
+### Added
+- 📱 **External App Mode (Beta)**: Launch and lock any Android app instead of a WebView
+  - Select any installed app from a picker
+  - Floating overlay button with 5-tap return mechanism
+  - Auto-relaunch when user presses Home/Back buttons
+  - Full Device Owner lock task support for external apps
+- 🔒 **Enhanced Lock Task**: Whitelisted external apps in lock task mode
+- 🎯 **Auto-relaunch**: Configurable automatic app restart on exit attempts
+
+
+### Changed
+- 🏗️ Refactored kiosk architecture to support both WebView and External App modes
+- ⚡ Improved overlay service reliability and lifecycle management
+
+
+### Fixed
+- 🐛 Potential fix for infinite loading on login pages (cookie/session handling)
+
+
+***
+
+
 ## [1.0.5] - 2025-11-26
 
 

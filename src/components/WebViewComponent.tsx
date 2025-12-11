@@ -34,6 +34,7 @@ const WebViewComponent: React.FC<WebViewComponentProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const loadingTimeoutRef = useRef<any>(null);
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -42,6 +43,15 @@ const WebViewComponent: React.FC<WebViewComponentProps> = ({
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
+
+  // Cleanup loading timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Injection JS pour détecter les clics dans la webview
   // Optimisé pour Fire OS : throttling des événements, protection double-init
@@ -79,25 +89,9 @@ const WebViewComponent: React.FC<WebViewComponentProps> = ({
       }
     }
 
-    // Click handler avec navigation
+    // Click handler - DO NOT intercept <a> tags to support SPA routing (Home Assistant, etc.)
+    // Only send interaction message without preventing default behavior
     document.addEventListener('click', function(e) {
-      let target = e.target;
-      while (target && target.tagName !== 'A') {
-        target = target.parentElement;
-      }
-
-     if (target && target.tagName === 'A' && target.href) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Envoi message avant navigation pour reset timer
-        sendInteraction();
-
-        window.location.href = target.href;
-        return false;
-      }
-
-      // Envoi message sur tout autre clic non lien
       sendInteraction();
     }, true);
 
@@ -238,15 +232,40 @@ const WebViewComponent: React.FC<WebViewComponentProps> = ({
           console.log('[FreeKiosk] Load started');
           setLoading(true);
           setError(false);
+
+          // Clear any existing timeout
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
+          }
+
+          // Fire OS/Fire Tablet workaround: Force hide loading spinner after 10s
+          // This handles cases where onLoadEnd doesn't fire on SPAs or redirects
+          loadingTimeoutRef.current = setTimeout(() => {
+            console.log('[FreeKiosk] Loading timeout reached - forcing spinner hide (Fire OS fix)');
+            setLoading(false);
+          }, 10000);
         }}
         onLoadEnd={() => {
           console.log('[FreeKiosk] Load ended');
           setLoading(false);
+
+          // Clear timeout since load completed normally
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
+            loadingTimeoutRef.current = null;
+          }
         }}
         onLoadProgress={({ nativeEvent }) => {
-          // For SPAs like Nuxt, hide spinner when fully loaded
+          // For SPAs like Nuxt/Home Assistant, hide spinner when fully loaded
           if (nativeEvent.progress === 1) {
+            console.log('[FreeKiosk] Load progress 100% - hiding spinner');
             setLoading(false);
+
+            // Clear timeout since we've reached 100%
+            if (loadingTimeoutRef.current) {
+              clearTimeout(loadingTimeoutRef.current);
+              loadingTimeoutRef.current = null;
+            }
           }
         }}
         onError={handleError}
@@ -286,7 +305,20 @@ const WebViewComponent: React.FC<WebViewComponentProps> = ({
         
         // Storage settings for Pinia/Nuxt compatibility
         cacheMode="LOAD_DEFAULT"
-        setSupportMultipleWindows={false}
+        
+        // Allow popups/new windows - required for some login flows
+        // Instead of opening a new window, we redirect in the same WebView
+        setSupportMultipleWindows={true}
+        onOpenWindow={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          console.log('[FreeKiosk] New window requested:', nativeEvent.targetUrl);
+          // Load the URL in the same WebView instead of opening a popup
+          if (webViewRef.current && nativeEvent.targetUrl) {
+            webViewRef.current.injectJavaScript(
+              `window.location.href = "${nativeEvent.targetUrl}";`
+            );
+          }
+        }}
 
         // Security: Disable file access to prevent reading local files
         allowFileAccess={false}

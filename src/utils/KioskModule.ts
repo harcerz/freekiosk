@@ -2,10 +2,14 @@ import { NativeModules } from 'react-native';
 
 interface KioskModuleInterface {
   exitKioskMode(): Promise<boolean>;
-  startLockTask(): Promise<boolean>;
+  startLockTask(externalAppPackage?: string): Promise<boolean>;
   stopLockTask(): Promise<boolean>;
   isInLockTaskMode(): Promise<boolean>;
   getLockTaskModeState(): Promise<number>;
+  isDeviceOwner(): Promise<boolean>;
+  shouldBlockAutoRelaunch(): Promise<boolean>;
+  clearBlockAutoRelaunch(): Promise<boolean>;
+  setBlockAutoRelaunch(block: boolean): Promise<boolean>;
 }
 
 const { KioskModule } = NativeModules;

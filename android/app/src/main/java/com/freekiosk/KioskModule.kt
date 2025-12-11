@@ -40,7 +40,7 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
     }
 
     @ReactMethod
-    fun startLockTask(promise: Promise) {
+    fun startLockTask(externalAppPackage: String?, promise: Promise) {
         try {
             val activity = reactApplicationContext.currentActivity
             if (activity != null && activity is MainActivity) {
@@ -50,9 +50,32 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                         val adminComponent = ComponentName(reactApplicationContext, DeviceAdminReceiver::class.java)
 
                         if (dpm.isDeviceOwnerApp(reactApplicationContext.packageName)) {
-                            dpm.setLockTaskPackages(adminComponent, arrayOf(reactApplicationContext.packageName))
+                            // Build whitelist: FreeKiosk + external app if provided
+                            val whitelist = mutableListOf(reactApplicationContext.packageName)
+                            
+                            // Use the passed parameter directly (more reliable than SharedPreferences timing)
+                            if (!externalAppPackage.isNullOrEmpty()) {
+                                try {
+                                    reactApplicationContext.packageManager.getPackageInfo(externalAppPackage, 0)
+                                    whitelist.add(externalAppPackage)
+                                    android.util.Log.d("KioskModule", "External app added to whitelist: $externalAppPackage")
+                                } catch (e: Exception) {
+                                    android.util.Log.e("KioskModule", "External app not found: $externalAppPackage")
+                                }
+                            }
+                            
+                            // Configure Lock Task features to block ALL system navigation
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                                dpm.setLockTaskFeatures(
+                                    adminComponent,
+                                    DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+                                )
+                                android.util.Log.d("KioskModule", "Lock task features set to NONE (full lockdown)")
+                            }
+                            
+                            dpm.setLockTaskPackages(adminComponent, whitelist.toTypedArray())
                             activity.startLockTask()
-                            android.util.Log.d("KioskModule", "Full lock task started (Device Owner)")
+                            android.util.Log.d("KioskModule", "Full lock task started (Device Owner) with whitelist: $whitelist")
                         } else {
                             activity.startLockTask()
                             android.util.Log.d("KioskModule", "Screen pinning started")
@@ -144,5 +167,39 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
         } catch (e: Exception) {
             promise.reject("ERROR_DISABLE_AUTO_LAUNCH", e)
         }
+    }
+
+    @ReactMethod
+    fun isDeviceOwner(promise: Promise) {
+        try {
+            val dpm = reactApplicationContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val isOwner = dpm.isDeviceOwnerApp(reactApplicationContext.packageName)
+            promise.resolve(isOwner)
+        } catch (e: Exception) {
+            promise.reject("ERROR", "Failed to check device owner status: ${e.message}")
+        }
+    }
+
+    @ReactMethod
+    fun shouldBlockAutoRelaunch(promise: Promise) {
+        // Juste retourner la valeur, ne pas reset automatiquement
+        val shouldBlock = MainActivity.blockAutoRelaunch
+        DebugLog.d("KioskModule", "shouldBlockAutoRelaunch = $shouldBlock")
+        promise.resolve(shouldBlock)
+    }
+
+    @ReactMethod
+    fun clearBlockAutoRelaunch(promise: Promise) {
+        // Reset explicite appelé par React après navigation vers PIN
+        MainActivity.blockAutoRelaunch = false
+        DebugLog.d("KioskModule", "clearBlockAutoRelaunch - flag reset to false")
+        promise.resolve(true)
+    }
+
+    @ReactMethod
+    fun setBlockAutoRelaunch(block: Boolean, promise: Promise) {
+        MainActivity.blockAutoRelaunch = block
+        DebugLog.d("KioskModule", "setBlockAutoRelaunch = $block")
+        promise.resolve(true)
     }
 }

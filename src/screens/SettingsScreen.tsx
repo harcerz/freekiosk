@@ -11,6 +11,7 @@ import {
   Alert,
   Linking,
   FlatList,
+  Modal,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import CookieManager from '@react-native-cookies/cookies';
@@ -18,6 +19,9 @@ import { Camera } from 'react-native-vision-camera';
 import { StorageService } from '../utils/storage';
 import { saveSecurePin, hasSecurePin, clearSecurePin } from '../utils/secureStorage';
 import CertificateModuleTyped, { CertificateInfo } from '../utils/CertificateModule';
+import AppLauncherModule, { AppInfo } from '../utils/AppLauncherModule';
+import OverlayPermissionModule from '../utils/OverlayPermissionModule';
+import LauncherModule from '../utils/LauncherModule';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -43,10 +47,68 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [defaultBrightness, setDefaultBrightness] = useState<number>(0.5);
   const [certificates, setCertificates] = useState<CertificateInfo[]>([]);
 
+  // External app states
+  const [displayMode, setDisplayMode] = useState<'webview' | 'external_app'>('webview');
+  const [externalAppPackage, setExternalAppPackage] = useState<string>('');
+  const [autoRelaunchApp, setAutoRelaunchApp] = useState<boolean>(true);
+  const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
+  const [showAppPicker, setShowAppPicker] = useState<boolean>(false);
+  const [loadingApps, setLoadingApps] = useState<boolean>(false);
+  const [hasOverlayPermission, setHasOverlayPermission] = useState<boolean>(false);
+  const [isDeviceOwner, setIsDeviceOwner] = useState<boolean>(false);
+
   useEffect(() => {
     loadSettings();
     loadCertificates();
+    checkOverlayPermission();
+    checkDeviceOwner();
   }, []);
+
+  const checkDeviceOwner = async () => {
+    try {
+      const isOwner = await KioskModule.isDeviceOwner();
+      setIsDeviceOwner(isOwner);
+    } catch (error) {
+      console.log('Error checking device owner:', error);
+      setIsDeviceOwner(false);
+    }
+  };
+
+  const checkOverlayPermission = async () => {
+    try {
+      const canDraw = await OverlayPermissionModule.canDrawOverlays();
+      setHasOverlayPermission(canDraw);
+    } catch (error) {
+      console.log('Error checking overlay permission:', error);
+    }
+  };
+
+  const requestOverlayPermission = async () => {
+    try {
+      await OverlayPermissionModule.requestOverlayPermission();
+      // Vérifier à nouveau après un court délai (l'utilisateur revient des paramètres)
+      setTimeout(() => checkOverlayPermission(), 1000);
+    } catch (error) {
+      console.error('Error requesting overlay permission:', error);
+    }
+  };
+
+  const handleDisplayModeChange = async (newMode: 'webview' | 'external_app') => {
+    try {
+      setDisplayMode(newMode);
+
+      // Activer/désactiver HomeActivity selon le mode
+      if (newMode === 'external_app') {
+        await LauncherModule.enableHomeLauncher();
+        console.log('HomeActivity enabled for External App mode');
+      } else {
+        await LauncherModule.disableHomeLauncher();
+        console.log('HomeActivity disabled for WebView mode');
+      }
+    } catch (error) {
+      console.error('Error changing display mode:', error);
+    }
+  };
 
   const loadSettings = async (): Promise<void> => {
     const savedUrl = await StorageService.getUrl();
@@ -84,6 +146,15 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     } else {
       setInactivityDelay('10');
     }
+
+    // Load external app settings
+    const savedDisplayMode = await StorageService.getDisplayMode();
+    const savedExternalAppPackage = await StorageService.getExternalAppPackage();
+    const savedAutoRelaunchApp = await StorageService.getAutoRelaunchApp();
+
+    setDisplayMode(savedDisplayMode);
+    setExternalAppPackage(savedExternalAppPackage ?? '');
+    setAutoRelaunchApp(savedAutoRelaunchApp);
   };
 
   const loadCertificates = async (): Promise<void> => {
@@ -93,6 +164,29 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     } catch (error) {
       console.log('Error loading certificates:', error);
     }
+  };
+
+  const loadInstalledApps = async (): Promise<void> => {
+    try {
+      setLoadingApps(true);
+      const apps = await AppLauncherModule.getInstalledApps();
+      setInstalledApps(apps);
+      setShowAppPicker(true);
+    } catch (error) {
+      Alert.alert('Error', `Failed to load apps: ${error}`);
+    } finally {
+      setLoadingApps(false);
+    }
+  };
+
+  const selectApp = (app: AppInfo): void => {
+    setExternalAppPackage(app.packageName);
+    setShowAppPicker(false);
+  };
+
+  const validatePackageName = (packageName: string): boolean => {
+    const regex = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
+    return regex.test(packageName);
   };
 
   const toggleAutoLaunch = async (value: boolean) => {
@@ -133,48 +227,78 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   };
 
   const handleSave = async (): Promise<void> => {
-    if (!url) {
-      Alert.alert('Error', 'Please enter a URL');
-      return;
+    // Validate based on display mode
+    if (displayMode === 'webview') {
+      if (!url) {
+        Alert.alert('Error', 'Please enter a URL');
+        return;
+      }
     }
 
-    // Trim whitespace
+    // Validate external app mode
+    if (displayMode === 'external_app') {
+      if (!externalAppPackage) {
+        Alert.alert('Error', 'Please enter a package name or select an app');
+        return;
+      }
+
+      if (!validatePackageName(externalAppPackage)) {
+        Alert.alert('Error', 'Invalid package name format (e.g., com.example.app)');
+        return;
+      }
+
+      // Check if app is installed
+      try {
+        const isInstalled = await AppLauncherModule.isAppInstalled(externalAppPackage);
+        if (!isInstalled) {
+          Alert.alert('Error', `App not installed: ${externalAppPackage}`);
+          return;
+        }
+      } catch (error) {
+        Alert.alert('Error', `Failed to check app: ${error}`);
+        return;
+      }
+    }
+
+    // URL validation only for webview mode
     let finalUrl = url.trim();
-    const urlLower = finalUrl.toLowerCase();
+    if (displayMode === 'webview') {
+      const urlLower = finalUrl.toLowerCase();
 
-    // Security: Block dangerous URL schemes
-    if (urlLower.startsWith('file://')) {
-      Alert.alert('Security Error', 'File URLs are not allowed for security reasons.\n\nPlease use http:// or https:// URLs only.');
-      return;
-    }
-    if (urlLower.startsWith('javascript:')) {
-      Alert.alert('Security Error', 'JavaScript URLs are not allowed for security reasons.\n\nPlease use http:// or https:// URLs only.');
-      return;
-    }
-    if (urlLower.startsWith('data:')) {
-      Alert.alert('Security Error', 'Data URLs are not allowed for security reasons.\n\nPlease use http:// or https:// URLs only.');
-      return;
-    }
-
-    // Auto-add https:// if no protocol specified
-    if (!urlLower.startsWith('http://') && !urlLower.startsWith('https://')) {
-      // Check if it looks like a valid domain (contains at least one dot)
-      if (finalUrl.includes('.')) {
-        finalUrl = 'https://' + finalUrl;
-        console.log('[Settings] Auto-added https:// to URL:', finalUrl);
-
-        // Update the input field to show the complete URL
-        setUrl(finalUrl);
-
-        Alert.alert(
-          'URL Updated',
-          `Added https:// to your URL:\n\n${finalUrl}\n\nClick Save again to confirm.`,
-          [{ text: 'OK' }]
-        );
+      // Security: Block dangerous URL schemes
+      if (urlLower.startsWith('file://')) {
+        Alert.alert('Security Error', 'File URLs are not allowed for security reasons.\n\nPlease use http:// or https:// URLs only.');
         return;
-      } else {
-        Alert.alert('Invalid URL', 'Please enter a valid URL (e.g., example.com or https://example.com)');
+      }
+      if (urlLower.startsWith('javascript:')) {
+        Alert.alert('Security Error', 'JavaScript URLs are not allowed for security reasons.\n\nPlease use http:// or https:// URLs only.');
         return;
+      }
+      if (urlLower.startsWith('data:')) {
+        Alert.alert('Security Error', 'Data URLs are not allowed for security reasons.\n\nPlease use http:// or https:// URLs only.');
+        return;
+      }
+
+      // Auto-add https:// if no protocol specified
+      if (!urlLower.startsWith('http://') && !urlLower.startsWith('https://')) {
+        // Check if it looks like a valid domain (contains at least one dot)
+        if (finalUrl.includes('.')) {
+          finalUrl = 'https://' + finalUrl;
+          console.log('[Settings] Auto-added https:// to URL:', finalUrl);
+
+          // Update the input field to show the complete URL
+          setUrl(finalUrl);
+
+          Alert.alert(
+            'URL Updated',
+            `Added https:// to your URL:\n\n${finalUrl}\n\nClick Save again to confirm.`,
+            [{ text: 'OK' }]
+          );
+          return;
+        } else {
+          Alert.alert('Invalid URL', 'Please enter a valid URL (e.g., example.com or https://example.com)');
+          return;
+        }
       }
     }
 
@@ -197,7 +321,10 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       return;
     }
 
-    await StorageService.saveUrl(finalUrl);
+    // Save URL only in webview mode
+    if (displayMode === 'webview') {
+      await StorageService.saveUrl(finalUrl);
+    }
 
     // Save PIN only if user entered a new one
     if (pin && pin.length >= 4) {
@@ -206,26 +333,46 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       setIsPinConfigured(true);
     }
 
-    await StorageService.saveAutoReload(autoReload);
-    await StorageService.saveKioskEnabled(kioskEnabled);
+    // Save settings based on mode
+    if (displayMode === 'webview') {
+      await StorageService.saveAutoReload(autoReload);
+      await StorageService.saveKioskEnabled(kioskEnabled);
+      await StorageService.saveScreensaverEnabled(screensaverEnabled);
+      await StorageService.saveDefaultBrightness(defaultBrightness);
+
+      // Save new screensaver architecture (inactivity is always enabled)
+      await StorageService.saveScreensaverInactivityEnabled(true);
+      await StorageService.saveScreensaverInactivityDelay(inactivityDelayNumber * 60000);
+      await StorageService.saveScreensaverMotionEnabled(motionEnabled);
+      await StorageService.saveScreensaverBrightness(screensaverBrightness);
+    } else {
+      // External app mode: disable features that don't work, but KEEP lock mode
+      await StorageService.saveAutoReload(false);
+      await StorageService.saveKioskEnabled(kioskEnabled);  // Lock mode fonctionne en external app
+      await StorageService.saveScreensaverEnabled(false);
+    }
+
     await StorageService.saveAutoLaunch(autoLaunchEnabled);
-    await StorageService.saveScreensaverEnabled(screensaverEnabled);
-    await StorageService.saveDefaultBrightness(defaultBrightness);
 
-    // Save new screensaver architecture (inactivity is always enabled)
-    await StorageService.saveScreensaverInactivityEnabled(true);
-    await StorageService.saveScreensaverInactivityDelay(inactivityDelayNumber * 60000);
-    await StorageService.saveScreensaverMotionEnabled(motionEnabled);
-    await StorageService.saveScreensaverBrightness(screensaverBrightness);
+    // Save external app settings
+    await StorageService.saveDisplayMode(displayMode);
+    await StorageService.saveExternalAppPackage(externalAppPackage);
+    await StorageService.saveAutoRelaunchApp(autoRelaunchApp);
 
+    // Start/stop lock task based on kioskEnabled (works for BOTH webview and external_app)
     if (kioskEnabled) {
       try {
-        await KioskModule.startLockTask();
-        Alert.alert('Success', 'Configuration saved\nScreen pinning enabled - swipe gestures blocked', [
+        // Pass external app package so it gets added to whitelist
+        const packageToWhitelist = displayMode === 'external_app' ? externalAppPackage : null;
+        await KioskModule.startLockTask(packageToWhitelist);
+        const message = displayMode === 'external_app'
+          ? 'Configuration saved\nLock mode enabled - navigation blocked'
+          : 'Configuration saved\nScreen pinning enabled - swipe gestures blocked';
+        Alert.alert('Success', message, [
           { text: 'OK', onPress: () => navigation.navigate('Kiosk') },
         ]);
       } catch (error) {
-        Alert.alert('Warning', 'Configuration saved\nDevice Owner not configured - screen pinning unavailable', [
+        Alert.alert('Warning', 'Configuration saved\nDevice Owner not configured - lock mode unavailable', [
           { text: 'OK', onPress: () => navigation.navigate('Kiosk') },
         ]);
       }
@@ -235,7 +382,12 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       } catch (error) {
         console.log('Not in lock task mode');
       }
-      Alert.alert('Success', 'Configuration saved\nScreen pinning disabled - swipe up to exit', [
+
+      const message = displayMode === 'external_app'
+        ? 'Configuration saved\nExternal app will launch automatically'
+        : 'Configuration saved\nScreen pinning disabled - swipe up to exit';
+
+      Alert.alert('Success', message, [
         { text: 'OK', onPress: () => navigation.navigate('Kiosk') },
       ]);
     }
@@ -272,6 +424,9 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               setScreensaverBrightness(0);
               setDefaultBrightness(0.5);
               setCertificates([]);
+              setDisplayMode('webview');
+              setExternalAppPackage('');
+              setAutoRelaunchApp(true);
 
               try {
                 await KioskModule.stopLockTask();
@@ -343,20 +498,166 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       <View style={styles.content}>
         <Text style={styles.title}>⚙️ Kiosk Configuration</Text>
 
-        {/* Vos sections existantes... */}
-        <View style={styles.section}>
-          <Text style={styles.label}>🌐 URL to Display</Text>
-          <TextInput
-            style={styles.input}
-            value={url}
-            onChangeText={setUrl}
-            placeholder="https://example.com"
-            keyboardType="url"
-            autoCapitalize="none"
-          />
-          <Text style={styles.hint}>Example: https://www.freekiosk.app</Text>
+        {/* Device Owner Status Badge */}
+        <View style={[styles.deviceOwnerBadge, isDeviceOwner ? styles.deviceOwnerBadgeActive : styles.deviceOwnerBadgeInactive]}>
+          <Text style={[styles.deviceOwnerBadgeText, isDeviceOwner ? styles.deviceOwnerBadgeTextActive : styles.deviceOwnerBadgeTextInactive]}>
+            {isDeviceOwner ? '🔒 Device Owner Mode Active' : '🔓 Device Owner Mode Not Active'}
+          </Text>
         </View>
 
+        {/* Vos sections existantes... */}
+        {/* Display Mode Section */}}
+        <View style={styles.section}>
+          <Text style={styles.label}>📱 Display Mode</Text>
+          <View style={styles.modeSelector}>
+            <TouchableOpacity
+              style={[styles.modeButton, displayMode === 'webview' && styles.modeButtonActive]}
+              onPress={() => handleDisplayModeChange('webview')}
+            >
+              <Text style={[styles.modeButtonText, displayMode === 'webview' && styles.modeButtonTextActive]}>
+                🌐 Website
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeButton, displayMode === 'external_app' && styles.modeButtonActive]}
+              onPress={() => handleDisplayModeChange('external_app')}
+            >
+              <Text style={[styles.modeButtonText, displayMode === 'external_app' && styles.modeButtonTextActive]}>
+                📦 Android App
+              </Text>
+              <View style={styles.betaBadge}>
+                <Text style={styles.betaBadgeText}>BETA</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.hint}>
+            Choose to display a website or launch an Android application
+          </Text>
+
+          {/* BETA Warning for External App */}
+          {displayMode === 'external_app' && (
+            <>
+              <View style={styles.betaWarningBox}>
+                <Text style={styles.betaWarningTitle}>⚠️ BETA Feature</Text>
+                <Text style={styles.betaWarningText}>
+                  External App mode is a beta feature. Some FreeKiosk features are not available in this mode:{'\n'}
+                  • Screensaver (inactivity detection, brightness control){'\n'}
+                  • Motion detection{'\n'}
+                  • Default brightness control{'\n\n'}
+                  To return to FreeKiosk, tap 5 times on the overlay button that appears in the bottom-right corner of the external app.
+                </Text>
+              </View>
+
+              {/* Device Owner Warning */}
+              {!isDeviceOwner && (
+                <View style={[styles.betaWarningBox, styles.deviceOwnerWarningBox]}>
+                  <Text style={styles.deviceOwnerWarningTitle}>🔒 Device Owner Recommended</Text>
+                  <Text style={styles.deviceOwnerWarningText}>
+                    External App mode requires Device Owner for full kiosk protection.{'\n\n'}
+                    Without Device Owner:{'\n'}
+                    • Navigation buttons (Home, Recent) remain accessible{'\n'}
+                    • User can exit the external app freely{'\n'}
+                    • Lock mode may not work properly{'\n\n'}
+                    Enable Device Owner via ADB for complete kiosk lockdown.
+                  </Text>
+                </View>
+              )}
+
+              {/* Overlay Permission Card */}
+              <View style={styles.permissionCard}>
+                <Text style={styles.permissionTitle}>
+                  {hasOverlayPermission ? '✓ Return Button Enabled' : '⚠️ Return Button Permission'}
+                </Text>
+                <Text style={styles.permissionText}>
+                  {hasOverlayPermission
+                    ? 'The return button is active and will appear over the external app.'
+                    : 'Enable overlay permission to show a return button over the external app.'}
+                </Text>
+                {!hasOverlayPermission && (
+                  <TouchableOpacity
+                    style={styles.permissionButton}
+                    onPress={requestOverlayPermission}>
+                    <Text style={styles.permissionButtonText}>
+                      Enable Overlay Permission
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          )}
+        </View>
+
+        {displayMode === 'webview' && (
+          <View style={styles.section}>
+            <Text style={styles.label}>🌐 URL to Display</Text>
+            <TextInput
+              style={styles.input}
+              value={url}
+              onChangeText={setUrl}
+              placeholder="https://example.com"
+              keyboardType="url"
+              autoCapitalize="none"
+            />
+            <Text style={styles.hint}>Example: https://www.freekiosk.app</Text>
+          </View>
+        )}
+
+        {displayMode === 'external_app' && (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.label}>📦 Package Name</Text>
+              <TextInput
+                style={styles.input}
+                value={externalAppPackage}
+                onChangeText={setExternalAppPackage}
+                placeholder="com.example.app"
+                keyboardType="default"
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={loadInstalledApps}
+                disabled={loadingApps}
+              >
+                <Text style={styles.pickerButtonText}>
+                  {loadingApps ? '⏳ Loading...' : '📋 Pick from Installed Apps'}
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.hint}>
+                Enter package name manually or pick from installed apps
+              </Text>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>🔄 Auto-Relaunch App</Text>
+                  <Text style={styles.hint}>
+                    Automatically relaunch the app if it closes or crashes
+                  </Text>
+                </View>
+                <Switch
+                  value={autoRelaunchApp}
+                  onValueChange={setAutoRelaunchApp}
+                  trackColor={{ false: '#767577', true: '#81b0ff' }}
+                  thumbColor={autoRelaunchApp ? '#0066cc' : '#f4f3f4'}
+                />
+              </View>
+            </View>
+
+            {/* Return Mechanism Info */}
+            <View style={styles.infoBox}>
+              <Text style={styles.infoTitle}>ℹ️ Return to Settings</Text>
+              <Text style={styles.infoText}>
+                • Return to FreeKiosk using your device's app switcher (recent apps button){'\n'}
+                • Device Owner mode: Press Volume Up button 5 times rapidly{'\n'}
+                • Auto-relaunch: Max 3 attempts to prevent crash loops
+              </Text>
+            </View>
+          </>
+        )}
+
+        {/* PIN Section - Always visible */}
         <View style={styles.section}>
           <Text style={styles.label}>🔐 PIN Code</Text>
           <TextInput
@@ -375,27 +676,29 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
           </Text>
         </View>
 
-        {/* NOUVELLE SECTION : Luminosité par défaut */}
-        <View style={styles.section}>
-          <Text style={styles.label}>💡 Default Brightness</Text>
-          <Text style={styles.hint}>Set the default screen brightness level (0% - 100%)</Text>
-          <View style={{ marginTop: 15 }}>
-            <Text style={styles.brightnessValue}>{Math.round(defaultBrightness * 100)}%</Text>
-            <Slider
-              style={{ width: '100%', height: 40 }}
-              minimumValue={0}
-              maximumValue={1}
-              step={0.01}
-              value={defaultBrightness}
-              onValueChange={setDefaultBrightness}
-              minimumTrackTintColor="#0066cc"
-              maximumTrackTintColor="#ddd"
-              thumbTintColor="#0066cc"
-            />
+        {/* Default Brightness - Only in WebView mode */}
+        {displayMode === 'webview' && (
+          <View style={styles.section}>
+            <Text style={styles.label}>💡 Default Brightness</Text>
+            <Text style={styles.hint}>Set the default screen brightness level (0% - 100%)</Text>
+            <View style={{ marginTop: 15 }}>
+              <Text style={styles.brightnessValue}>{Math.round(defaultBrightness * 100)}%</Text>
+              <Slider
+                style={{ width: '100%', height: 40 }}
+                minimumValue={0}
+                maximumValue={1}
+                step={0.01}
+                value={defaultBrightness}
+                onValueChange={setDefaultBrightness}
+                minimumTrackTintColor="#0066cc"
+                maximumTrackTintColor="#ddd"
+                thumbTintColor="#0066cc"
+              />
+            </View>
           </View>
-        </View>
+        )}
 
-        {/* Vos autres sections existantes (Auto Launch, Pin App, etc.) */}
+        {/* Auto Launch - Always visible */}
         <View style={styles.section}>
           <View style={styles.switchRow}>
             <View style={{ flex: 1 }}>
@@ -420,54 +723,81 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
           </View>
         </View>
 
+        {/* Lock Mode - Available in both WebView and External App modes */}
         <View style={styles.section}>
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>📌 Pin App to Screen</Text>
-              <Text style={styles.hint}>
-                Lock app in kiosk mode (requires Device Owner)
-                {'\n'}
-                When ON: Swipe gestures blocked, need PIN to exit
-                {'\n'}
-                When OFF: Swipe up to exit normally
-              </Text>
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>🔒 Lock Mode</Text>
+                <Text style={styles.hint}>
+                  Prevent users from exiting the kiosk app
+                  {'\n'}
+                  When ON: Exit gestures blocked, need PIN to exit
+                  {'\n'}
+                  When OFF: Users can exit normally
+                </Text>
+              </View>
+              <Switch
+                value={kioskEnabled}
+                onValueChange={setKioskEnabled}
+                trackColor={{ false: '#767577', true: '#81b0ff' }}
+                thumbColor={kioskEnabled ? '#0066cc' : '#f4f3f4'}
+              />
             </View>
-            <Switch
-              value={kioskEnabled}
-              onValueChange={setKioskEnabled}
-              trackColor={{ false: '#767577', true: '#81b0ff' }}
-              thumbColor={kioskEnabled ? '#0066cc' : '#f4f3f4'}
-            />
+            {!kioskEnabled && (
+              <View style={styles.warningBox}>
+                <Text style={styles.warningText}>⚠️ Warning: With Lock Mode disabled, users can exit the app normally</Text>
+              </View>
+            )}
+            {kioskEnabled && displayMode === 'webview' && isDeviceOwner && (
+              <View style={styles.infoSubBox}>
+                <Text style={styles.infoSubText}>
+                  ℹ️ Screen pinning enabled: Only 5-tap gesture + PIN code allows exit
+                </Text>
+              </View>
+            )}
+            {kioskEnabled && displayMode === 'webview' && !isDeviceOwner && (
+              <View style={styles.warningBox}>
+                <Text style={styles.warningText}>
+                  ⚠️ Device Owner Recommended: Without Device Owner, users can exit Lock Mode using Back + Recent Apps gesture. For true kiosk lockdown, set FreeKiosk as Device Owner.
+                </Text>
+              </View>
+            )}
+            {kioskEnabled && displayMode === 'external_app' && !isDeviceOwner && (
+              <View style={styles.warningBox}>
+                <Text style={styles.warningText}>⚠️ Device Owner Required: Lock Mode will not work in External App mode without Device Owner privileges. Users can still exit the app.</Text>
+              </View>
+            )}
+            {kioskEnabled && displayMode === 'external_app' && isDeviceOwner && (
+              <View style={styles.infoSubBox}>
+                <Text style={styles.infoSubText}>
+                  ℹ️ Lock Mode enabled: Only overlay 5-tap + PIN code allows exit from external app
+                </Text>
+              </View>
+            )}
           </View>
-          {!kioskEnabled && (
-            <View style={styles.warningBox}>
-              <Text style={styles.warningText}>⚠️ Warning: With screen pinning disabled, users can swipe up to exit the app</Text>
-            </View>
-          )}
-          {kioskEnabled && (
-            <View style={styles.infoSubBox}>
-              <Text style={styles.infoSubText}>ℹ️ Screen pinning enabled: Only 5-tap gesture + PIN code allows exit</Text>
-            </View>
-          )}
-        </View>
+        )}
 
-        <View style={styles.section}>
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>🔄 Automatic Reload</Text>
-              <Text style={styles.hint}>Automatically reload the page on error</Text>
+        {/* Auto Reload - Only in WebView mode */}
+        {displayMode === 'webview' && (
+          <View style={styles.section}>
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>🔄 Automatic Reload</Text>
+                <Text style={styles.hint}>Automatically reload the page on error</Text>
+              </View>
+              <Switch
+                value={autoReload}
+                onValueChange={setAutoReload}
+                trackColor={{ false: '#767577', true: '#81b0ff' }}
+                thumbColor={autoReload ? '#0066cc' : '#f4f3f4'}
+              />
             </View>
-            <Switch
-              value={autoReload}
-              onValueChange={setAutoReload}
-              trackColor={{ false: '#767577', true: '#81b0ff' }}
-              thumbColor={autoReload ? '#0066cc' : '#f4f3f4'}
-            />
           </View>
-        </View>
+        )}
 
-        {/* Screensaver Settings - Unified Section */}
-        <View style={styles.section}>
+        {/* Screensaver Settings - Only in WebView mode */}
+        {displayMode === 'webview' && (
+          <View style={styles.section}>
           <View style={styles.switchRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>🛌 Screensaver</Text>
@@ -578,10 +908,12 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
             </>
           )}
-        </View>
+          </View>
+        )}
 
-        {/* NOUVELLE SECTION : Certificats SSL acceptés */}
-        <View style={styles.section}>
+        {/* SSL Certificates - Only in WebView mode */}
+        {displayMode === 'webview' && (
+          <View style={styles.section}>
           <Text style={styles.label}>🔒 Accepted SSL Certificates</Text>
           <Text style={styles.hint}>
             Self-signed certificates you've accepted. They expire after 1 year.
@@ -617,7 +949,8 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               ))}
             </View>
           )}
-        </View>
+          </View>
+        )}
 
         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
           <Text style={styles.saveButtonText}>💾 Save</Text>
@@ -648,6 +981,38 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
           </Text>
         </View>
       </View>
+
+      {/* App Picker Modal */}
+      <Modal
+        visible={showAppPicker}
+        animationType="slide"
+        onRequestClose={() => setShowAppPicker(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>📱 Select Installed App</Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowAppPicker(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={installedApps}
+            keyExtractor={(item) => item.packageName}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.appItem}
+                onPress={() => selectApp(item)}
+              >
+                <Text style={styles.appName}>{item.appName}</Text>
+                <Text style={styles.appPackage}>{item.packageName}</Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -663,10 +1028,38 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 30,
+    marginBottom: 15,
     marginTop: 20,
     color: '#333',
     textAlign: 'center',
+  },
+  // Device Owner Badge Styles
+  deviceOwnerBadge: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  deviceOwnerBadgeActive: {
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1,
+    borderColor: '#4caf50',
+  },
+  deviceOwnerBadgeInactive: {
+    backgroundColor: '#fff3e0',
+    borderWidth: 1,
+    borderColor: '#ff9800',
+  },
+  deviceOwnerBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  deviceOwnerBadgeTextActive: {
+    color: '#2e7d32',
+  },
+  deviceOwnerBadgeTextInactive: {
+    color: '#e65100',
   },
   section: {
     marginBottom: 25,
@@ -890,6 +1283,190 @@ const styles = StyleSheet.create({
   presetButtonTextActive: {
     color: '#fff',
     fontWeight: '600',
+  },
+  // Display Mode Styles
+  modeSelector: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  modeButtonActive: {
+    backgroundColor: '#0066cc',
+    borderColor: '#0066cc',
+  },
+  modeButtonText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  modeButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  betaBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#ff9800',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  betaBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#fff',
+    letterSpacing: 0.5,
+  },
+  betaWarningBox: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#fff3cd',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff9800',
+  },
+  betaWarningTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#856404',
+    marginBottom: 8,
+  },
+  betaWarningText: {
+    fontSize: 13,
+    color: '#856404',
+    lineHeight: 20,
+  },
+  // Device Owner Warning Styles
+  deviceOwnerWarningBox: {
+    backgroundColor: '#ffebee',
+    borderLeftColor: '#f44336',
+  },
+  deviceOwnerWarningTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#c62828',
+    marginBottom: 8,
+  },
+  deviceOwnerWarningText: {
+    fontSize: 13,
+    color: '#c62828',
+    lineHeight: 20,
+  },
+  // Permission Card Styles
+  permissionCard: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#e8f5e9',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4caf50',
+  },
+  permissionCardSuccess: {
+    backgroundColor: '#e8f5e9',
+    borderLeftColor: '#4caf50',
+  },
+  permissionCardWarning: {
+    backgroundColor: '#fff3cd',
+    borderLeftColor: '#ffc107',
+  },
+  permissionTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+    marginBottom: 8,
+  },
+  permissionText: {
+    fontSize: 13,
+    color: '#2e7d32',
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  permissionButton: {
+    backgroundColor: '#4caf50',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  permissionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  // App Picker Styles
+  pickerButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  pickerButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#0066cc',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  modalCloseButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    fontSize: 28,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  appItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    backgroundColor: '#fff',
+  },
+  appName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  appPackage: {
+    fontSize: 13,
+    color: '#666',
+    fontFamily: 'monospace',
   },
 });
 

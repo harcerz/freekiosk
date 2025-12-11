@@ -14,6 +14,9 @@ const KEYS = {
   SCREENSAVER_MOTION_DELAY: '@screensaver_motion_delay',
   SCREENSAVER_BRIGHTNESS: '@screensaver_brightness',
   DEFAULT_BRIGHTNESS: '@default_brightness',
+  DISPLAY_MODE: '@kiosk_display_mode',
+  EXTERNAL_APP_PACKAGE: '@kiosk_external_app_package',
+  AUTO_RELAUNCH_APP: '@kiosk_auto_relaunch_app',
   // Legacy keys for backward compatibility
   SCREENSAVER_DELAY: '@screensaver_delay',
   MOTION_DETECTION_ENABLED: '@motion_detection_enabled',
@@ -133,6 +136,9 @@ export const StorageService = {
         KEYS.SCREENSAVER_MOTION_DELAY,
         KEYS.SCREENSAVER_BRIGHTNESS,
         KEYS.DEFAULT_BRIGHTNESS,
+        KEYS.DISPLAY_MODE,
+        KEYS.EXTERNAL_APP_PACKAGE,
+        KEYS.AUTO_RELAUNCH_APP,
         // Legacy keys
         KEYS.SCREENSAVER_DELAY,
         KEYS.MOTION_DETECTION_ENABLED,
@@ -365,6 +371,63 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting screensaver brightness:', error);
       return 0;
+    }
+  },
+
+  //DISPLAY MODE
+  saveDisplayMode: async (mode: 'webview' | 'external_app'): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.DISPLAY_MODE, mode);
+    } catch (error) {
+      console.error('Error saving display mode:', error);
+    }
+  },
+
+  getDisplayMode: async (): Promise<'webview' | 'external_app'> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.DISPLAY_MODE);
+      return value === 'external_app' ? 'external_app' : 'webview'; // Par défaut 'webview'
+    } catch (error) {
+      console.error('Error getting display mode:', error);
+      return 'webview';
+    }
+  },
+
+  //EXTERNAL APP PACKAGE
+  saveExternalAppPackage: async (packageName: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.EXTERNAL_APP_PACKAGE, packageName);
+    } catch (error) {
+      console.error('Error saving external app package:', error);
+    }
+  },
+
+  getExternalAppPackage: async (): Promise<string | null> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.EXTERNAL_APP_PACKAGE);
+      return value;
+    } catch (error) {
+      console.error('Error getting external app package:', error);
+      return null;
+    }
+  },
+
+  //AUTO RELAUNCH APP
+  saveAutoRelaunchApp: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.AUTO_RELAUNCH_APP, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving auto relaunch app:', error);
+    }
+  },
+
+  getAutoRelaunchApp: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.AUTO_RELAUNCH_APP);
+      return value === null ? true : JSON.parse(value); // Par défaut true
+    } catch (error) {
+      console.error('Error getting auto relaunch app:', error);
+      return true;
     }
   },
 

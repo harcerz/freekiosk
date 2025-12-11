@@ -1,0 +1,272 @@
+diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+index 0287e1c..1d96a33 100644
+--- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
++++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+@@ -1,9 +1,11 @@
+ package com.reactnativecommunity.webview;
+ 
++import android.app.AlertDialog;
+ import android.annotation.TargetApi;
+ import android.graphics.Bitmap;
+ import android.net.http.SslError;
+ import android.os.Build;
++import android.os.Bundle;
+ import android.os.SystemClock;
+ import android.util.Log;
+ import android.webkit.HttpAuthHandler;
+@@ -13,6 +15,8 @@ import android.webkit.WebResourceRequest;
+ import android.webkit.WebResourceResponse;
+ import android.webkit.WebView;
+ import android.webkit.WebViewClient;
++import android.content.SharedPreferences;
++import android.content.Context;
+ 
+ import androidx.annotation.Nullable;
+ import androidx.annotation.RequiresApi;
+@@ -35,12 +39,16 @@ import com.reactnativecommunity.webview.events.TopShouldStartLoadWithRequestEven
+ import android.webkit.CookieManager;
+ import android.webkit.CookieSyncManager;
+ 
++import java.security.MessageDigest;
+ import java.util.concurrent.atomic.AtomicReference;
+ 
+ public class RNCWebViewClient extends WebViewClient {
+     private static String TAG = "RNCWebViewClient";
+     protected static final int SHOULD_OVERRIDE_URL_LOADING_TIMEOUT = 250;
+ 
++    // Certificate expiration: 1 year in milliseconds
++    private static final long CERTIFICATE_EXPIRATION_MS = 365L * 24 * 60 * 60 * 1000;
++
+     protected boolean mLastLoadFailed = false;
+     protected RNCWebView.ProgressChangedFilter progressChangedFilter = null;
+     protected @Nullable RNCBasicAuthCredential basicAuthCredential = null;
+@@ -157,23 +165,15 @@ public class RNCWebViewClient extends WebViewClient {
+ 
+     @Override
+     public void onReceivedSslError(final WebView webView, final SslErrorHandler handler, final SslError error) {
+-        // onReceivedSslError is called for most requests, per Android docs: https://developer.android.com/reference/android/webkit/WebViewClient#onReceivedSslError(android.webkit.WebView,%2520android.webkit.SslErrorHandler,%2520android.net.http.SslError)
+-        // WebView.getUrl() will return the top-level window URL.
+-        // If a top-level navigation triggers this error handler, the top-level URL will be the failing URL (not the URL of the currently-rendered page).
+-        // This is desired behavior. We later use these values to determine whether the request is a top-level navigation or a subresource request.
++        // onReceivedSslError is called for most requests, per Android docs
+         String topWindowUrl = webView.getUrl();
+         String failingUrl = error.getUrl();
+ 
+-        // Cancel request after obtaining top-level URL.
+-        // If request is cancelled before obtaining top-level URL, undesired behavior may occur.
+-        // Undesired behavior: Return value of WebView.getUrl() may be the current URL instead of the failing URL.
+-        handler.cancel();
+-
+         int code = error.getPrimaryError();
+         String description = "";
+         String descriptionPrefix = "SSL error: ";
+ 
+-        // https://developer.android.com/reference/android/net/http/SslError.html
++        // Get error description
+         switch (code) {
+             case SslError.SSL_DATE_INVALID:
+                 description = "The date of the certificate is invalid";
+@@ -200,24 +200,182 @@ public class RNCWebViewClient extends WebViewClient {
+ 
+         description = descriptionPrefix + description;
+ 
+-      if (!topWindowUrl.equalsIgnoreCase(failingUrl)) {
+-        // If error is not due to top-level navigation, then do not call onReceivedError()
+-        Log.w(TAG, "Resource blocked from loading due to SSL error. Blocked URL: "+failingUrl);
+-        this.onReceivedSubResourceSslError(
+-          webView,
+-          code,
+-          description,
+-          failingUrl
+-        );
+-        return;
+-      }
++        // Check if certificate is already accepted (with expiration check)
++        String certFingerprint = getCertificateFingerprint(error.getCertificate());
++        if (isCertificateAccepted(webView.getContext(), certFingerprint, failingUrl) &&
++            code == SslError.SSL_UNTRUSTED &&
++            topWindowUrl != null && topWindowUrl.equalsIgnoreCase(failingUrl)) {
++            // Certificate already trusted by user and not expired
++            Log.i(TAG, "Using previously accepted certificate: " + failingUrl);
++            handler.proceed();
++            return;
++        }
+ 
+-        this.onReceivedError(
++        // IMPORTANT: Only show dialog for self-signed (SSL_UNTRUSTED)
++        if (code == SslError.SSL_UNTRUSTED && topWindowUrl != null && topWindowUrl.equalsIgnoreCase(failingUrl)) {
++            // Show user consent dialog
++            android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(webView.getContext());
++            builder.setTitle("⚠️ Security Warning");
++
++            // Extract certificate info for display
++            String certIssuer = error.getCertificate().getIssuedBy().getDName();
++            String certSubject = error.getCertificate().getIssuedTo().getDName();
++            String fingerprintShort = certFingerprint.length() > 16 ?
++                certFingerprint.substring(0, 16) + "..." : certFingerprint;
++
++            builder.setMessage("This server's SSL certificate is not trusted.\n\n" +
++                    "Subject: " + certSubject + "\n" +
++                    "Issuer: " + certIssuer + "\n" +
++                    "Fingerprint: " + fingerprintShort + "\n" +
++                    "URL: " + failingUrl + "\n\n" +
++                    "Only proceed if you trust this server.\n\n" +
++                    "The certificate will be remembered for 1 year.");
++
++            builder.setPositiveButton("Proceed & Remember", (dialog, which) -> {
++                Log.i(TAG, "User accepted SSL certificate for: " + failingUrl);
++                // Save the certificate as accepted with URL and expiration
++                saveCertificateAcceptance(webView.getContext(), certFingerprint, failingUrl);
++                handler.proceed();
++            });
++
++            builder.setNegativeButton("Cancel", (dialog, which) -> {
++                Log.w(TAG, "User rejected SSL certificate for: " + failingUrl);
++                handler.cancel();
++            });
++
++            builder.setCancelable(false);
++            builder.show();
++            return;
++        }
++
++        // For other SSL errors (expired, mismatch, etc) or sub-resources → reject
++        if (topWindowUrl == null || !topWindowUrl.equalsIgnoreCase(failingUrl)) {
++            // Subresource error
++            Log.w(TAG, "Resource blocked from loading due to SSL error. Blocked URL: " + failingUrl);
++            this.onReceivedSubResourceSslError(
+                 webView,
+                 code,
+                 description,
+                 failingUrl
++            );
++            handler.cancel();
++            return;
++        }
++
++        // Top-level navigation error (not SSL_UNTRUSTED)
++        Log.e(TAG, "SSL Error on main page: " + description);
++        handler.cancel();
++        this.onReceivedError(
++            webView,
++            code,
++            description,
++            failingUrl
++        );
++    }
++
++    // ✅ IMPROVED: Helper methods to manage certificate acceptance with SHA-256 and expiration
++
++    /**
++     * Get certificate fingerprint using SHA-256 hash
++     * This is cryptographically unique and matches browser implementations
++     */
++    private String getCertificateFingerprint(android.net.http.SslCertificate cert) {
++        try {
++            // Try to get X509 certificate bytes for SHA-256 calculation
++            Bundle bundle = android.net.http.SslCertificate.saveState(cert);
++            byte[] certBytes = bundle.getByteArray("x509-certificate");
++
++            if (certBytes != null) {
++                MessageDigest digest = MessageDigest.getInstance("SHA-256");
++                byte[] hash = digest.digest(certBytes);
++
++                // Convert to hexadecimal string
++                StringBuilder hexString = new StringBuilder();
++                for (byte b : hash) {
++                    String hex = Integer.toHexString(0xff & b);
++                    if (hex.length() == 1) {
++                        hexString.append('0');
++                    }
++                    hexString.append(hex);
++                }
++                return hexString.toString();
++            }
++        } catch (Exception e) {
++            Log.e(TAG, "Error computing SHA-256 fingerprint, falling back to issuer+subject", e);
++        }
++
++        // Fallback: use issuer + subject (less secure but better than nothing)
++        String issuer = cert.getIssuedBy().getDName();
++        String subject = cert.getIssuedTo().getDName();
++        return issuer + "|" + subject;
++    }
++
++    /**
++     * Check if certificate is already accepted by user
++     * Also checks expiration date and auto-removes expired certificates
++     */
++    private boolean isCertificateAccepted(Context context, String fingerprint, String url) {
++        SharedPreferences prefs = context.getSharedPreferences(
++            "freekiosk_ssl_certs",
++            Context.MODE_PRIVATE
++        );
++
++        // Check if certificate is accepted
++        boolean isAccepted = prefs.getBoolean("cert_" + fingerprint, false);
++        if (!isAccepted) {
++            return false;
++        }
++
++        // Check expiration time
++        long expiryTime = prefs.getLong("cert_expiry_" + fingerprint, 0);
++        long currentTime = System.currentTimeMillis();
++
++        if (currentTime > expiryTime) {
++            // Certificate acceptance has expired - remove it
++            Log.i(TAG, "Certificate acceptance expired for: " + url);
++            prefs.edit()
++                .remove("cert_" + fingerprint)
++                .remove("cert_expiry_" + fingerprint)
++                .remove("cert_url_" + fingerprint)
++                .apply();
++            return false;
++        }
++
++        return true;
++    }
++
++    /**
++     * Save certificate as accepted by user
++     * Stores: acceptance flag, expiration timestamp, and URL
++     */
++    private void saveCertificateAcceptance(Context context, String fingerprint, String url) {
++        long expirationTime = System.currentTimeMillis() + CERTIFICATE_EXPIRATION_MS;
++
++        SharedPreferences prefs = context.getSharedPreferences(
++            "freekiosk_ssl_certs",
++            Context.MODE_PRIVATE
++        );
++
++        prefs.edit()
++            .putBoolean("cert_" + fingerprint, true)
++            .putLong("cert_expiry_" + fingerprint, expirationTime)
++            .putString("cert_url_" + fingerprint, url)
++            .apply();
++
++        Log.i(TAG, "Certificate saved as accepted: " + fingerprint + " for URL: " + url + " (expires in 1 year)");
++    }
++
++    /**
++     * Clear all accepted certificates (called from CertificateModule)
++     * This is a static method so it can be called from the native module
++     */
++    public static void clearAcceptedCertificates(Context context) {
++        SharedPreferences prefs = context.getSharedPreferences(
++            "freekiosk_ssl_certs",
++            Context.MODE_PRIVATE
+         );
++        prefs.edit().clear().apply();
++        Log.i(TAG, "All accepted certificates cleared");
+     }
+ 
+     public void onReceivedSubResourceSslError(
+@@ -314,8 +472,6 @@ public class RNCWebViewClient extends WebViewClient {
+     protected WritableMap createWebViewEvent(WebView webView, String url) {
+         WritableMap event = Arguments.createMap();
+         event.putDouble("target", RNCWebViewWrapper.getReactTagFromWebView(webView));
+-        // Don't use webView.getUrl() here, the URL isn't updated to the new value yet in callbacks
+-        // like onPageFinished
+         event.putString("url", url);
+         event.putBoolean("loading", !mLastLoadFailed && webView.getProgress() != 100);
+         event.putString("title", webView.getTitle());

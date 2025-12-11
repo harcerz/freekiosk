@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import PinInput from '../components/PinInput';
 import { StorageService } from '../utils/storage';
 import { migrateOldPin, hasSecurePin } from '../utils/secureStorage';
+import AppLauncherModule from '../utils/AppLauncherModule';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -15,10 +16,24 @@ interface PinScreenProps {
 const PinScreen: React.FC<PinScreenProps> = ({ navigation }) => {
   const [storedPin, setStoredPin] = useState<string>('1234');
   const [migrationDone, setMigrationDone] = useState<boolean>(false);
+  const [displayMode, setDisplayMode] = useState<'webview' | 'external_app'>('webview');
+  const [externalAppPackage, setExternalAppPackage] = useState<string | null>(null);
 
   useEffect(() => {
     migrateFromOldSystem();
+    loadDisplayMode();
   }, []);
+
+  const loadDisplayMode = async (): Promise<void> => {
+    try {
+      const savedDisplayMode = await StorageService.getDisplayMode();
+      const savedExternalAppPackage = await StorageService.getExternalAppPackage();
+      setDisplayMode(savedDisplayMode);
+      setExternalAppPackage(savedExternalAppPackage);
+    } catch (error) {
+      console.error('[PinScreen] Failed to load display mode:', error);
+    }
+  };
 
   const migrateFromOldSystem = async (): Promise<void> => {
     try {
@@ -48,6 +63,20 @@ const PinScreen: React.FC<PinScreenProps> = ({ navigation }) => {
     navigation.navigate('Settings');
   };
 
+  const handleBack = async (): Promise<void> => {
+    // If in external app mode, relaunch the external app
+    if (displayMode === 'external_app' && externalAppPackage) {
+      try {
+        await AppLauncherModule.launchExternalApp(externalAppPackage);
+        console.log('[PinScreen] Relaunched external app after PIN back');
+      } catch (error) {
+        console.error('[PinScreen] Failed to relaunch external app:', error);
+      }
+    }
+    // Navigate back to Kiosk screen
+    navigation.navigate('Kiosk');
+  };
+
   // Wait for migration before showing PIN input
   if (!migrationDone) {
     return <View style={styles.container} />;
@@ -55,6 +84,10 @@ const PinScreen: React.FC<PinScreenProps> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+        <Text style={styles.backButtonText}>↩️ Back to Kiosk</Text>
+      </TouchableOpacity>
+
       <PinInput onSuccess={handleSuccess} storedPin={storedPin} />
     </View>
   );
@@ -63,6 +96,30 @@ const PinScreen: React.FC<PinScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    justifyContent: 'center',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    right: 20,
+    backgroundColor: '#fff',
+    paddingVertical: 15,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    zIndex: 1000,
+  },
+  backButtonText: {
+    color: '#666',
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
 

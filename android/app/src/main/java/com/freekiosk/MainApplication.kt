@@ -18,6 +18,10 @@ class MainApplication : Application(), ReactApplication {
           add(KioskPackage())
           add(CertificatePackage())
           add(MotionDetectionPackage())
+          add(AppLauncherPackage())
+          add(OverlayPermissionPackage())
+          add(LauncherPackage())
+          add(OverlayServicePackage())
         },
     )
   }

@@ -11,7 +11,7 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/Version-1.0.5-blue.svg" alt="Version 1.0.5">
+    <img src="https://img.shields.io/badge/Version-1.1.0-blue.svg" alt="Version 1.1.0">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
     <img src="https://img.shields.io/badge/Device%20Owner-Supported-brightgreen" alt="Device Owner">
@@ -45,6 +45,7 @@ FreeKiosk is a **completely free and open-source** kiosk mode application for An
 
 ### Core Features
 - **Full Kiosk Browser Mode** with Android Device Owner API
+- **External App Mode (Beta)** - Lock any Android app instead of a WebView
 - **Optional Screen Pinning** - Choose between full lock or normal mode
 - **WebView Display** for any URL (dashboards, websites, etc.)
 - **HTTPS Support** - Including self-signed certificates
@@ -62,6 +63,13 @@ FreeKiosk is a **completely free and open-source** kiosk mode application for An
 - **Recent Apps Disabled**
 - **Settings Access Blocked**
 - **Status Bar Hidden**
+
+### External App Mode (Beta)
+- **Launch Any App** - Select from installed apps picker
+- **5-Tap Return** - Floating overlay button to exit
+- **Auto-Relaunch** - Automatically restart app on Home/Back press
+- **Lock Task Support** - Full kiosk lockdown for external apps
+- **PIN Protection** - Require PIN to access settings
 
 ### Flexibility
 - **Toggle Screen Pinning ON/OFF** - User decides the security level
@@ -206,7 +214,14 @@ Done! Your tablet is now in kiosk mode.
 
 ## 🗺️ Roadmap
 
-### ✅ v1.0.5 (Current - Nov 2025)
+### ✅ v1.1.0 (Current - Dec 2025)
+- 📱 **External App Mode (Beta)**: Launch and lock any Android app instead of a WebView
+- 🔒 Enhanced Lock Task: Whitelisted external apps in lock task mode
+- 🎯 Auto-relaunch: Configurable automatic app restart on exit attempts
+- 🐛 Potential fix for infinite loading on login pages (cookie/session handling)
+- 🐛 Lock task mode stability improvements
+
+### ✅ v1.0.5 (Nov 2025)
 - 🎥 Motion detection (Beta): Camera-based motion detection to exit screensaver mode
 - 🍪 Cookie management: Basic cookie handling via react-native-cookies for web session persistence
 - 🚀 WebView optimization: Performance improvements specifically for Fire OS tablets
