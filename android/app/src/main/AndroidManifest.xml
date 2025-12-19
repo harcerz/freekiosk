@@ -18,6 +18,12 @@
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Permissions pour la Status Bar -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />

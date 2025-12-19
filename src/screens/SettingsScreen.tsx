@@ -53,11 +53,13 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [externalAppPackage, setExternalAppPackage] = useState<string>('');
   const [autoRelaunchApp, setAutoRelaunchApp] = useState<boolean>(true);
   const [overlayButtonVisible, setOverlayButtonVisible] = useState<boolean>(false);
+  const [externalAppTestMode, setExternalAppTestMode] = useState<boolean>(true);
   const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
   const [showAppPicker, setShowAppPicker] = useState<boolean>(false);
   const [loadingApps, setLoadingApps] = useState<boolean>(false);
   const [hasOverlayPermission, setHasOverlayPermission] = useState<boolean>(false);
   const [isDeviceOwner, setIsDeviceOwner] = useState<boolean>(false);
+  const [statusBarEnabled, setStatusBarEnabled] = useState<boolean>(false);
 
   useEffect(() => {
     loadSettings();
@@ -155,12 +157,16 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const savedAutoRelaunchApp = await StorageService.getAutoRelaunchApp();
     const savedOverlayButtonVisible = await StorageService.getOverlayButtonVisible();
     const savedPinMaxAttempts = await StorageService.getPinMaxAttempts();
+    const savedStatusBarEnabled = await StorageService.getStatusBarEnabled();
+    const savedExternalAppTestMode = await StorageService.getExternalAppTestMode();
 
     setDisplayMode(savedDisplayMode);
     setExternalAppPackage(savedExternalAppPackage ?? '');
     setAutoRelaunchApp(savedAutoRelaunchApp);
     setOverlayButtonVisible(savedOverlayButtonVisible);
     setPinMaxAttempts(savedPinMaxAttempts);
+    setStatusBarEnabled(savedStatusBarEnabled);
+    setExternalAppTestMode(savedExternalAppTestMode);
   };
 
   const loadCertificates = async (): Promise<void> => {
@@ -234,7 +240,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
   const handleOverlayButtonVisibleChange = async (value: boolean) => {
     setOverlayButtonVisible(value);
-    
+
     // Update button opacity immediately if in external app mode
     if (displayMode === 'external_app') {
       const opacity = value ? 1.0 : 0.0;
@@ -245,6 +251,24 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       } catch (error) {
         console.log('Error setting button opacity:', error);
       }
+    }
+  };
+
+  const handleStatusBarEnabledChange = async (value: boolean) => {
+    setStatusBarEnabled(value);
+
+    // Update status bar immediately if in external app mode (overlay)
+    // For webview mode, the change will be applied on next KioskScreen load
+    if (displayMode === 'external_app') {
+      try {
+        const { OverlayServiceModule } = NativeModules;
+        await OverlayServiceModule.setStatusBarEnabled(value);
+        console.log(`Status bar enabled set to: ${value} (external app mode)`);
+      } catch (error) {
+        console.log('Error setting status bar enabled:', error);
+      }
+    } else {
+      console.log(`Status bar enabled set to: ${value} (webview mode - will apply on return to Kiosk)`);
     }
   };
 
@@ -390,14 +414,17 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     await StorageService.saveExternalAppPackage(externalAppPackage);
     await StorageService.saveAutoRelaunchApp(autoRelaunchApp);
     await StorageService.saveOverlayButtonVisible(overlayButtonVisible);
+    await StorageService.saveStatusBarEnabled(statusBarEnabled);
+    await StorageService.saveExternalAppTestMode(externalAppTestMode);
 
-    // Update overlay button opacity
+    // Update overlay button opacity and test mode
     if (displayMode === 'external_app') {
       const opacity = overlayButtonVisible ? 1.0 : 0.0;
       try {
         await OverlayServiceModule.setButtonOpacity(opacity);
+        await OverlayServiceModule.setTestMode(externalAppTestMode);
       } catch (error) {
-        console.log('Error setting button opacity:', error);
+        console.log('Error setting overlay settings:', error);
       }
     }
 
@@ -471,6 +498,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               setExternalAppPackage('');
               setAutoRelaunchApp(true);
               setOverlayButtonVisible(false);
+              setStatusBarEnabled(false);
 
               try {
                 await KioskModule.stopLockTask();
@@ -588,6 +616,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               setExternalAppPackage('');
               setAutoRelaunchApp(true);
               setOverlayButtonVisible(false);
+              setStatusBarEnabled(false);
               setIsDeviceOwner(false);
 
               Alert.alert(
@@ -780,6 +809,24 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               </View>
             </View>
 
+            {/* Test Mode */}
+            <View style={styles.section}>
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>🧪 Test Mode</Text>
+                  <Text style={styles.hint}>
+                    Allows using the Android back button to return to FreeKiosk (recommended for testing)
+                  </Text>
+                </View>
+                <Switch
+                  value={externalAppTestMode}
+                  onValueChange={setExternalAppTestMode}
+                  trackColor={{ false: '#767577', true: '#81b0ff' }}
+                  thumbColor={externalAppTestMode ? '#0066cc' : '#f4f3f4'}
+                />
+              </View>
+            </View>
+
             {/* Return Mechanism Info */}
             <View style={styles.infoBox}>
               <Text style={styles.infoTitle}>ℹ️ Return to Settings</Text>
@@ -879,6 +926,41 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               <Text style={styles.saveButtonText}>📲 Open Settings</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Status Bar Toggle - Available in both modes */}
+        <View style={styles.section}>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>📊 System Status Bar</Text>
+              <Text style={styles.hint}>
+                Display system information (battery, Wi-Fi, Bluetooth, volume, time) at the top of the screen
+              </Text>
+            </View>
+            <Switch
+              value={statusBarEnabled}
+              onValueChange={handleStatusBarEnabledChange}
+              trackColor={{ false: '#767577', true: '#81b0ff' }}
+              thumbColor={statusBarEnabled ? '#0066cc' : '#f4f3f4'}
+            />
+          </View>
+          {statusBarEnabled && (
+            <View style={styles.infoSubBox}>
+              <Text style={styles.infoSubText}>
+                ℹ️ Status bar displays: Battery (with charging indicator ⚡), Wi-Fi (✓/✗), Bluetooth (✓/✗), Volume level, Current time
+              </Text>
+              {displayMode === 'external_app' && (
+                <Text style={styles.infoSubText}>
+                  {'\n'}External app mode: Status bar appears as overlay on top of the app
+                </Text>
+              )}
+              {displayMode === 'webview' && (
+                <Text style={styles.infoSubText}>
+                  {'\n'}WebView mode: Status bar appears above the web content
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Lock Mode - Available in both WebView and External App modes */}

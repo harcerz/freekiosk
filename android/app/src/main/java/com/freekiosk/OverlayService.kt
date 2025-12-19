@@ -8,20 +8,35 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.net.wifi.WifiManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.bluetooth.BluetoothManager
+import android.media.AudioManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import com.facebook.react.ReactApplication
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class OverlayService : Service() {
 
@@ -29,26 +44,45 @@ class OverlayService : Service() {
         // Opacité du bouton overlay (0.0 = invisible, 1.0 = opaque)
         @Volatile
         var buttonOpacity = 0.0f
-        
+
+        // Status bar enabled/disabled
+        @Volatile
+        var statusBarEnabled = false
+
         // Instance du service pour pouvoir mettre à jour le bouton
         @Volatile
         private var instance: OverlayService? = null
-        
+
         fun updateButtonOpacity(opacity: Float) {
             buttonOpacity = opacity
             instance?.updateButtonAlpha()
+        }
+
+        fun updateStatusBarEnabled(enabled: Boolean) {
+            statusBarEnabled = enabled
+            instance?.recreateStatusBar()
         }
     }
 
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
     private var returnButton: Button? = null
+    private var statusBarView: View? = null
+    private var batteryText: TextView? = null
+    private var batteryChargingIcon: android.widget.ImageView? = null
+    private var wifiStatusIcon: android.widget.ImageView? = null
+    private var bluetoothStatusIcon: android.widget.ImageView? = null
+    private var volumeIcon: android.widget.ImageView? = null
+    private var volumeText: TextView? = null
+    private var timeText: TextView? = null
     private var tapCount = 0
     private val tapHandler = Handler(Looper.getMainLooper())
+    private val statusUpdateHandler = Handler(Looper.getMainLooper())
     private val TAP_TIMEOUT = 2000L // 2 secondes pour faire 5 taps
     private val REQUIRED_TAPS = 5
     private val CHANNEL_ID = "FreeKioskOverlay"
     private val NOTIFICATION_ID = 1001
+    private val STATUS_UPDATE_INTERVAL = 5000L // Update every 5 seconds
 
     // BroadcastReceiver pour détecter quand l'écran s'allume
     private val screenReceiver = object : BroadcastReceiver() {
@@ -64,6 +98,16 @@ class OverlayService : Service() {
                 Intent.ACTION_SCREEN_OFF -> {
                     DebugLog.d("OverlayService", "Screen OFF")
                 }
+            }
+        }
+    }
+    
+    // BroadcastReceiver pour détecter les changements de volume
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                DebugLog.d("OverlayService", "Volume changed - updating status bar")
+                updateStatusBar()
             }
         }
     }
@@ -86,17 +130,28 @@ class OverlayService : Service() {
         }
         registerReceiver(screenReceiver, filter)
         
-        createOverlay()
+        // Enregistrer le receiver pour les changements de volume
+        val volumeFilter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        registerReceiver(volumeReceiver, volumeFilter)
+        
+        // Créer l'overlay seulement si la permission est accordée
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
+            createOverlay()
+        } else {
+            DebugLog.d("OverlayService", "Overlay permission not granted - running without visible button")
+        }
     }
 
     private fun loadButtonOpacity() {
         try {
             val prefs = getSharedPreferences("FreeKioskSettings", Context.MODE_PRIVATE)
             buttonOpacity = prefs.getFloat("overlay_button_opacity", 0.0f)
-            DebugLog.d("OverlayService", "Loaded button opacity: $buttonOpacity")
+            statusBarEnabled = prefs.getBoolean("status_bar_enabled", false)
+            DebugLog.d("OverlayService", "Loaded settings - opacity: $buttonOpacity, status bar: $statusBarEnabled")
         } catch (e: Exception) {
-            DebugLog.errorProduction("OverlayService", "Failed to load button opacity: ${e.message}")
+            DebugLog.errorProduction("OverlayService", "Failed to load settings: ${e.message}")
             buttonOpacity = 0.0f
+            statusBarEnabled = false
         }
     }
 
@@ -129,13 +184,23 @@ class OverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Recréer l'overlay si le service est redémarré
-        if (overlayView == null) {
+        // Vérifier la permission overlay avant de créer des vues
+        val hasOverlayPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+        
+        // Recréer l'overlay si le service est redémarré ET si on a la permission
+        if (hasOverlayPermission && overlayView == null) {
             createOverlay()
         }
+
+        // Créer la status bar si activée ET si on a la permission
+        if (hasOverlayPermission && statusBarEnabled && statusBarView == null) {
+            createStatusBar()
+        }
+        
         // START_STICKY: le service sera redémarré si tué par le système
         return START_STICKY
     }
+
 
     private fun createOverlay() {
         // Créer le layout de l'overlay
@@ -212,6 +277,355 @@ class OverlayService : Service() {
         }
     }
 
+    // Recréer la status bar (appelé quand le toggle change)
+    private fun recreateStatusBar() {
+        try {
+            // Supprimer l'ancienne status bar si elle existe
+            statusBarView?.let { windowManager?.removeView(it) }
+            statusBarView = null
+
+            // Créer la nouvelle si activée
+            if (statusBarEnabled) {
+                createStatusBar()
+                startStatusUpdates()
+            } else {
+                stopStatusUpdates()
+            }
+        } catch (e: Exception) {
+            DebugLog.errorProduction("OverlayService", "Failed to recreate status bar: ${e.message}")
+        }
+    }
+
+    private fun createStatusBar() {
+        try {
+            // Convertir dp en pixels
+            val density = resources.displayMetrics.density
+            val heightPx = (40 * density).toInt() // 40dp de hauteur
+            val paddingPx = (12 * density).toInt()
+            val textSizePx = 13f
+            val iconSizePx = (18 * density).toInt()
+
+            // Créer le LinearLayout horizontal pour la barre d'état
+            val statusLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setBackgroundColor(Color.parseColor("#E0000000")) // Noir plus opaque
+                setPadding(paddingPx, paddingPx / 2, paddingPx, paddingPx / 2)
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            // Style commun pour tous les TextViews
+            val textStyle: (TextView) -> Unit = { tv ->
+                tv.setTextColor(Color.WHITE)
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizePx)
+                tv.setPadding(paddingPx / 3, 0, paddingPx / 2, 0)
+            }
+
+            // Fonction pour créer un conteneur avec icône + texte
+            fun createStatusItem(iconRes: Int, initialText: String): Pair<LinearLayout, TextView> {
+                val container = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, 0, paddingPx, 0)
+                }
+
+                // Icône
+                val icon = android.widget.ImageView(this).apply {
+                    setImageResource(iconRes)
+                    layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx)
+                    setColorFilter(Color.WHITE)
+                }
+                container.addView(icon)
+
+                // Texte
+                val textView = TextView(this).apply {
+                    text = initialText
+                    textStyle(this)
+                }
+                container.addView(textView)
+
+                return Pair(container, textView)
+            }
+
+            // Batterie (icône + pourcentage + icône éclair si en charge)
+            val batteryContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, paddingPx, 0)
+            }
+            val batteryIcon = android.widget.ImageView(this).apply {
+                setImageResource(resources.getIdentifier("ic_battery", "drawable", packageName))
+                layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx)
+                setColorFilter(Color.WHITE)
+            }
+            batteryContainer.addView(batteryIcon)
+            batteryText = TextView(this).apply {
+                text = "--"
+                textStyle(this)
+            }
+            batteryContainer.addView(batteryText)
+            batteryChargingIcon = android.widget.ImageView(this).apply {
+                setImageResource(resources.getIdentifier("ic_charging", "drawable", packageName))
+                layoutParams = LinearLayout.LayoutParams((iconSizePx * 0.8).toInt(), (iconSizePx * 0.8).toInt()).apply {
+                    setMargins(2, 0, 0, 0) // Marge minimale pour coller au texte
+                }
+                visibility = View.GONE // Caché par défaut
+            }
+            batteryContainer.addView(batteryChargingIcon)
+            statusLayout.addView(batteryContainer)
+
+            // Wi-Fi (icône + statut icône)
+            val wifiContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, paddingPx / 2, 0)
+            }
+            val wifiIcon = android.widget.ImageView(this).apply {
+                setImageResource(resources.getIdentifier("ic_wifi", "drawable", packageName))
+                layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx)
+                setColorFilter(Color.WHITE)
+            }
+            wifiContainer.addView(wifiIcon)
+            wifiStatusIcon = android.widget.ImageView(this).apply {
+                setImageResource(resources.getIdentifier("ic_cross", "drawable", packageName))
+                layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx).apply {
+                    setMargins(paddingPx / 4, 0, 0, 0)
+                }
+            }
+            wifiContainer.addView(wifiStatusIcon)
+            statusLayout.addView(wifiContainer)
+
+            // Bluetooth (icône + statut icône)
+            val bluetoothContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, paddingPx / 2, 0)
+            }
+            val bluetoothIcon = android.widget.ImageView(this).apply {
+                setImageResource(resources.getIdentifier("ic_bluetooth", "drawable", packageName))
+                layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx)
+                setColorFilter(Color.WHITE)
+            }
+            bluetoothContainer.addView(bluetoothIcon)
+            bluetoothStatusIcon = android.widget.ImageView(this).apply {
+                setImageResource(resources.getIdentifier("ic_cross", "drawable", packageName))
+                layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx).apply {
+                    setMargins(paddingPx / 4, 0, 0, 0)
+                }
+            }
+            bluetoothContainer.addView(bluetoothStatusIcon)
+            statusLayout.addView(bluetoothContainer)
+
+            // Volume (with dynamic icon)
+            val volumeIconRes = resources.getIdentifier("ic_volume_medium", "drawable", packageName)
+            val volumeContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, paddingPx, 0)
+            }
+            volumeIcon = android.widget.ImageView(this).apply {
+                setImageResource(volumeIconRes)
+                layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx)
+                setColorFilter(Color.WHITE)
+            }
+            volumeContainer.addView(volumeIcon)
+            volumeText = TextView(this).apply {
+                text = "--"
+                textStyle(this)
+            }
+            volumeContainer.addView(volumeText)
+            statusLayout.addView(volumeContainer)
+
+            // Spacer pour pousser l'heure à droite
+            val spacer = View(this)
+            statusLayout.addView(spacer, LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1f
+            ))
+
+            // Heure (avec icône)
+            val timeIcon = resources.getIdentifier("ic_time", "drawable", packageName)
+            val (timeContainer, timeTextView) = createStatusItem(timeIcon, "--:--")
+            timeText = timeTextView
+            statusLayout.addView(timeContainer)
+
+            statusBarView = statusLayout
+
+            // Paramètres de la fenêtre overlay pour la status bar
+            val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+            }
+
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT, // Toute la largeur
+                heightPx, // Hauteur fixe
+                layoutType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            )
+
+            params.gravity = Gravity.TOP or Gravity.START  // Position en haut à gauche
+            params.x = 0
+            params.y = 0
+
+            windowManager?.addView(statusBarView, params)
+            DebugLog.d("OverlayService", "Status bar created successfully")
+
+            // Première mise à jour immédiate
+            updateStatusBar()
+        } catch (e: Exception) {
+            DebugLog.errorProduction("OverlayService", "Failed to create status bar: ${e.message}")
+        }
+    }
+
+    private fun updateStatusBar() {
+        try {
+            // Heure
+            val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+            timeText?.text = currentTime
+
+            // Batterie
+            val batteryStatus: Intent? = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            if (batteryStatus != null) {
+                val level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                val batteryPct = (level * 100 / scale.toFloat()).toInt()
+                val status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                                status == BatteryManager.BATTERY_STATUS_FULL
+
+                batteryText?.text = "$batteryPct%"
+                batteryChargingIcon?.visibility = if (isCharging) View.VISIBLE else View.GONE
+            }
+
+            // Wi-Fi
+            try {
+                val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                if (connectivityManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val network = connectivityManager.activeNetwork
+                    val capabilities = connectivityManager.getNetworkCapabilities(network)
+                    val isWifiConnected = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+
+                    val iconRes = if (isWifiConnected) {
+                        resources.getIdentifier("ic_check", "drawable", packageName)
+                    } else {
+                        resources.getIdentifier("ic_cross", "drawable", packageName)
+                    }
+                    wifiStatusIcon?.setImageResource(iconRes)
+                } else {
+                    wifiStatusIcon?.setImageResource(resources.getIdentifier("ic_cross", "drawable", packageName))
+                }
+            } catch (e: SecurityException) {
+                wifiStatusIcon?.setImageResource(resources.getIdentifier("ic_cross", "drawable", packageName))
+                DebugLog.d("OverlayService", "WiFi permission denied: ${e.message}")
+            } catch (e: Exception) {
+                wifiStatusIcon?.setImageResource(resources.getIdentifier("ic_cross", "drawable", packageName))
+                DebugLog.errorProduction("OverlayService", "WiFi error: ${e.message}")
+            }
+
+            // Bluetooth
+            try {
+                val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+                val bluetoothAdapter = bluetoothManager?.adapter
+
+                if (bluetoothAdapter != null && bluetoothAdapter.isEnabled) {
+                    // Vérifier s'il y a des appareils RÉELLEMENT connectés (pas juste appairés)
+                    try {
+                        @Suppress("DEPRECATION")
+                        val bondedDevices = bluetoothAdapter.bondedDevices
+                        var hasConnectedDevice = false
+
+                        if (bondedDevices != null) {
+                            for (device in bondedDevices) {
+                                try {
+                                    // Utiliser réflexion pour accéder à isConnected() (méthode cachée)
+                                    val isConnectedMethod = device.javaClass.getMethod("isConnected")
+                                    val connected = isConnectedMethod.invoke(device) as? Boolean ?: false
+                                    if (connected) {
+                                        hasConnectedDevice = true
+                                        break
+                                    }
+                                } catch (e: Exception) {
+                                    // Si la méthode ne fonctionne pas, on ignore
+                                }
+                            }
+                        }
+
+                        val iconRes = if (hasConnectedDevice) {
+                            resources.getIdentifier("ic_check", "drawable", packageName)
+                        } else {
+                            resources.getIdentifier("ic_cross", "drawable", packageName)
+                        }
+                        bluetoothStatusIcon?.setImageResource(iconRes)
+                    } catch (e: SecurityException) {
+                        // Permission manquante, on affiche déconnecté
+                        bluetoothStatusIcon?.setImageResource(resources.getIdentifier("ic_cross", "drawable", packageName))
+                    }
+                } else {
+                    bluetoothStatusIcon?.setImageResource(resources.getIdentifier("ic_cross", "drawable", packageName))
+                }
+            } catch (e: SecurityException) {
+                bluetoothStatusIcon?.setImageResource(resources.getIdentifier("ic_cross", "drawable", packageName))
+                DebugLog.d("OverlayService", "Bluetooth permission denied: ${e.message}")
+            } catch (e: Exception) {
+                bluetoothStatusIcon?.setImageResource(resources.getIdentifier("ic_cross", "drawable", packageName))
+                DebugLog.errorProduction("OverlayService", "Bluetooth error: ${e.message}")
+            }
+
+            // Volume (media stream)
+            try {
+                val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                if (audioManager != null) {
+                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    val volumePercent = if (maxVolume > 0) (currentVolume * 100 / maxVolume) else 0
+
+                    // Select icon based on volume level
+                    val iconRes = when {
+                        volumePercent == 0 -> resources.getIdentifier("ic_volume_mute", "drawable", packageName)
+                        volumePercent <= 33 -> resources.getIdentifier("ic_volume_low", "drawable", packageName)
+                        volumePercent <= 66 -> resources.getIdentifier("ic_volume_medium", "drawable", packageName)
+                        else -> resources.getIdentifier("ic_volume_high", "drawable", packageName)
+                    }
+
+                    volumeIcon?.setImageResource(iconRes)
+                    volumeText?.text = "$volumePercent%"
+                } else {
+                    volumeText?.text = "--"
+                }
+            } catch (e: Exception) {
+                volumeText?.text = "--"
+                DebugLog.errorProduction("OverlayService", "Volume error: ${e.message}")
+            }
+
+        } catch (e: Exception) {
+            DebugLog.errorProduction("OverlayService", "Failed to update status bar: ${e.message}")
+        }
+    }
+
+    private fun startStatusUpdates() {
+        stopStatusUpdates() // Arrêter les updates existants
+        statusUpdateHandler.post(object : Runnable {
+            override fun run() {
+                if (statusBarEnabled && statusBarView != null) {
+                    updateStatusBar()
+                    statusUpdateHandler.postDelayed(this, STATUS_UPDATE_INTERVAL)
+                }
+            }
+        })
+        DebugLog.d("OverlayService", "Status updates started")
+    }
+
+    private fun stopStatusUpdates() {
+        statusUpdateHandler.removeCallbacksAndMessages(null)
+        DebugLog.d("OverlayService", "Status updates stopped")
+    }
+
     private fun handleTap() {
         tapCount++
         DebugLog.d("OverlayService", "Tap count: $tapCount/$REQUIRED_TAPS")
@@ -236,25 +650,66 @@ class OverlayService : Service() {
 
     private fun returnToFreeKiosk() {
         try {
+            DebugLog.d("OverlayService", "returnToFreeKiosk() called")
+            
             // IMPORTANT: Bloquer le relaunch automatique AVANT de lancer MainActivity
-            // Ce flag est vérifié côté React Native via un module natif
             MainActivity.blockAutoRelaunch = true
             DebugLog.d("OverlayService", "Set blockAutoRelaunch = true")
 
             // Envoyer l'événement pour naviguer directement au PIN
             sendNavigateToPinEvent()
 
+            // Méthode PRINCIPALE: Utiliser moveTaskToFront pour ramener l'app au premier plan
+            try {
+                val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val tasks = am.appTasks
+                
+                // Chercher la task de FreeKiosk
+                for (task in tasks) {
+                    val taskInfo = task.taskInfo
+                    if (taskInfo.baseActivity?.packageName == packageName) {
+                        DebugLog.d("OverlayService", "Found FreeKiosk task, moving to front")
+                        task.moveToFront()
+                        DebugLog.d("OverlayService", "Successfully moved FreeKiosk to front")
+                        
+                        // Ensuite, s'assurer que MainActivity est au top de notre task
+                        val intent = Intent(this, MainActivity::class.java)
+                        intent.addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        )
+                        intent.putExtra("voluntaryReturn", true)
+                        intent.putExtra("navigateToPin", true)
+                        startActivity(intent)
+                        DebugLog.d("OverlayService", "MainActivity started after moveToFront")
+                        return
+                    }
+                }
+                DebugLog.w("OverlayService", "Could not find FreeKiosk task in appTasks")
+            } catch (e: Exception) {
+                DebugLog.errorProduction("OverlayService", "moveTaskToFront failed: ${e.message}")
+            }
+            
+            // FALLBACK: Si moveTaskToFront ne marche pas, essayer l'ancienne méthode
+            DebugLog.d("OverlayService", "Trying fallback method with startActivity")
             val intent = Intent(this, MainActivity::class.java)
             intent.addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT
+                Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             )
-            // Marquer que c'est un retour volontaire pour éviter le relaunch automatique
             intent.putExtra("voluntaryReturn", true)
-            intent.putExtra("navigateToPin", true)  // Signal pour aller au PIN
-            startActivity(intent)
+            intent.putExtra("navigateToPin", true)
+            
+            try {
+                startActivity(intent)
+                DebugLog.d("OverlayService", "MainActivity started with fallback intent")
+            } catch (e: Exception) {
+                DebugLog.errorProduction("OverlayService", "Failed to start MainActivity: ${e.message}")
+            }
+            
             DebugLog.d("OverlayService", "Returning to FreeKiosk PIN screen from overlay button")
             
             // Arrêter le service overlay après retour
@@ -292,6 +747,9 @@ class OverlayService : Service() {
         super.onDestroy()
         instance = null
         try {
+            // Arrêter les mises à jour de la status bar
+            stopStatusUpdates()
+
             // Désenregistrer le receiver
             try {
                 unregisterReceiver(screenReceiver)
@@ -299,10 +757,22 @@ class OverlayService : Service() {
                 // Ignore si déjà désenregistré
             }
             
+            // Désenregistrer le volume receiver
+            try {
+                unregisterReceiver(volumeReceiver)
+            } catch (e: Exception) {
+                // Ignore si déjà désenregistré
+            }
+
+            // Supprimer la status bar
+            statusBarView?.let { windowManager?.removeView(it) }
+            statusBarView = null
+
+            // Supprimer le bouton overlay
             overlayView?.let { windowManager?.removeView(it) }
             overlayView = null
-            
-            DebugLog.d("OverlayService", "Overlay removed, receiver unregistered")
+
+            DebugLog.d("OverlayService", "Overlay and status bar removed, receiver unregistered")
         } catch (e: Exception) {
             DebugLog.errorProduction("OverlayService", "Error removing overlay: ${e.message}")
         }

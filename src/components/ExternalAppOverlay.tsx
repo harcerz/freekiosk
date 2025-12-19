@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from 'rea
 interface ExternalAppOverlayProps {
   externalAppPackage: string | null;
   isAppLaunched: boolean;
+  testModeEnabled: boolean;
   onReturnToApp: () => void;
   onGoToSettings: () => void;
 }
@@ -11,6 +12,7 @@ interface ExternalAppOverlayProps {
 const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
   externalAppPackage,
   isAppLaunched,
+  testModeEnabled,
   onReturnToApp,
   onGoToSettings,
 }) => {
@@ -52,6 +54,19 @@ const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
               )}
             </View>
           </View>
+
+          {/* Test Mode Warning */}
+          {testModeEnabled && (
+            <View style={styles.warningContainer}>
+              <View style={styles.warningCard}>
+                <Text style={styles.warningIcon}>🧪</Text>
+                <Text style={styles.warningTitle}>Test Mode Active</Text>
+                <Text style={styles.warningText}>
+                  You can use the Android back button to return to FreeKiosk.
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Action Buttons */}
           <View style={styles.buttonContainer}>
@@ -161,6 +176,33 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     textAlign: 'center',
     marginTop: 4,
+  },
+  warningContainer: {
+    width: '100%',
+    marginBottom: 24,
+  },
+  warningCard: {
+    backgroundColor: '#FFA726',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  warningIcon: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+  warningTitle: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#fff',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   buttonContainer: {
     width: '100%',

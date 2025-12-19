@@ -22,12 +22,12 @@ class OverlayServiceModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun startOverlayService(promise: Promise) {
         try {
-            // Vérifier la permission overlay (Android M+)
+            // Démarrer le service même sans permission overlay
+            // Le service peut toujours fonctionner en arrière-plan (timer test mode, retour auto)
+            // L'overlay button ne sera simplement pas visible sans permission
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (!Settings.canDrawOverlays(reactApplicationContext)) {
-                    DebugLog.d("OverlayServiceModule", "Overlay permission not granted")
-                    promise.reject("NO_PERMISSION", "Overlay permission not granted")
-                    return
+                    DebugLog.d("OverlayServiceModule", "Overlay permission not granted - service will run without visible button")
                 }
             }
 
@@ -82,6 +82,50 @@ class OverlayServiceModule(reactContext: ReactApplicationContext) :
             promise.resolve(opacity.toDouble())
         } catch (e: Exception) {
             promise.reject("ERROR", "Failed to get button opacity: ${e.message}")
+        }
+    }
+
+    @ReactMethod
+    fun setTestMode(enabled: Boolean, promise: Promise) {
+        try {
+            // Sauvegarder dans SharedPreferences pour le JavaScript
+            val prefs = reactApplicationContext.getSharedPreferences("FreeKioskSettings", android.content.Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("test_mode_enabled", enabled).apply()
+            
+            DebugLog.d("OverlayServiceModule", "Set test mode to: $enabled")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            DebugLog.errorProduction("OverlayServiceModule", "Error setting test mode: ${e.message}")
+            promise.reject("ERROR", "Failed to set test mode: ${e.message}")
+        }
+    }
+
+    @ReactMethod
+    fun setStatusBarEnabled(enabled: Boolean, promise: Promise) {
+        try {
+            // Sauvegarder dans SharedPreferences
+            val prefs = reactApplicationContext.getSharedPreferences("FreeKioskSettings", android.content.Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("status_bar_enabled", enabled).apply()
+
+            // Mettre à jour la status bar en temps réel via la méthode statique
+            OverlayService.updateStatusBarEnabled(enabled)
+
+            DebugLog.d("OverlayServiceModule", "Set status bar enabled to: $enabled")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            DebugLog.errorProduction("OverlayServiceModule", "Error setting status bar enabled: ${e.message}")
+            promise.reject("ERROR", "Failed to set status bar enabled: ${e.message}")
+        }
+    }
+
+    @ReactMethod
+    fun getStatusBarEnabled(promise: Promise) {
+        try {
+            val prefs = reactApplicationContext.getSharedPreferences("FreeKioskSettings", android.content.Context.MODE_PRIVATE)
+            val enabled = prefs.getBoolean("status_bar_enabled", false)
+            promise.resolve(enabled)
+        } catch (e: Exception) {
+            promise.reject("ERROR", "Failed to get status bar enabled: ${e.message}")
         }
     }
 }

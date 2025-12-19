@@ -11,7 +11,7 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/Version-1.1.1-blue.svg" alt="Version 1.1.1">
+    <img src="https://img.shields.io/badge/Version-1.1.2-blue.svg" alt="Version 1.1.2">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
     <img src="https://img.shields.io/badge/Device%20Owner-Supported-brightgreen" alt="Device Owner">
@@ -70,6 +70,7 @@ FreeKiosk is a **completely free and open-source** kiosk mode application for An
 - **Auto-Relaunch** - Automatically restart app on Home/Back press
 - **Lock Task Support** - Full kiosk lockdown for external apps
 - **PIN Protection** - Require PIN to access settings
+- **Test Mode** - Safety back button (enabled by default)
 
 ### Flexibility
 - **Toggle Screen Pinning ON/OFF** - User decides the security level
@@ -169,6 +170,8 @@ Done! Your tablet is now in kiosk mode.
 - **🔐 PIN Code** - 4-6 digit security code (change from default!)
 - **📌 Pin App to Screen** - Toggle ON for full lockdown, OFF for normal mode
 - **🔄 Automatic Reload** - Auto-reload page on error
+- **📊 Show Status Bar** - Display battery, WiFi, Bluetooth, and system icons
+- **🧪 Test Mode** - Enable back button in External App Mode (default: ON)
 - **🔄 Reset All Settings** - Clear configuration (useful in Device Owner mode)
 - **🚪 Exit Kiosk Mode** - Close app and disable restrictions
 
@@ -214,7 +217,11 @@ Done! Your tablet is now in kiosk mode.
 
 ## 🗺️ Roadmap
 
-### ✅ v1.1.1 (Current - Dec 2025)
+### ✅ v1.1.2 (Current - Dec 2025)
+- 📊 **Status Bar Display**: New option to show/hide Android status bar (battery, WiFi, Bluetooth, sound)
+- 🧪 **Test Mode for External App**: Safety feature with back button (enabled by default)
+
+### ✅ v1.1.1 (Dec 2025)
 - 👁️ **Overlay Button Visibility Toggle**: Show/hide return button in External App Mode
 - 🗑️ **Device Owner Removal**: Easy removal of Device Owner privileges for uninstallation
 - 🔢 **Configurable PIN Attempts**: Set maximum attempts (1-100) with 15min lockout

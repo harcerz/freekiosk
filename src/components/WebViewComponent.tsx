@@ -1,13 +1,14 @@
 import React, { useRef, useState } from 'react';
-import { 
-  View, 
-  StyleSheet, 
-  ActivityIndicator, 
-  Text, 
+import {
+  View,
+  StyleSheet,
+  ActivityIndicator,
+  Text,
   TouchableOpacity,
   Animated,
   Image,
-  ScrollView
+  ScrollView,
+  Linking
 } from 'react-native';
 
 import { WebView } from 'react-native-webview';
@@ -140,6 +141,12 @@ const WebViewComponent: React.FC<WebViewComponentProps> = ({
     navigation.navigate('Pin');
   };
 
+  const handleOpenGitHub = (): void => {
+    Linking.openURL('https://github.com/rushb-fr/freekiosk').catch(err =>
+      console.error('[FreeKiosk] Failed to open GitHub URL:', err)
+    );
+  };
+
   if (!url) {
     return (
       <View style={styles.welcomeContainer}>
@@ -168,32 +175,39 @@ const WebViewComponent: React.FC<WebViewComponentProps> = ({
 
             {/* Features List */}
             <View style={styles.featuresList}>
-              <FeatureItem 
-                icon="🔒" 
-                text="Secure kiosk mode" 
+              <FeatureItem
+                icon="🔒"
+                text="Secure kiosk mode"
               />
-              <FeatureItem 
-                icon="🌐" 
-                text="Full HTTPS support" 
+              <FeatureItem
+                icon="⚡"
+                text="Optimal performance"
               />
-              <FeatureItem 
-                icon="⚡" 
-                text="Optimal performance" 
-              />
-              <FeatureItem 
-                icon="🎯" 
-                text="100% free & open source" 
+              <FeatureItem
+                icon="🎯"
+                text="100% free & open source"
               />
             </View>
 
             {/* Action Button */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.setupButton}
               onPress={handleNavigateToSettings}
               activeOpacity={0.8}
             >
               <Text style={styles.setupButtonText}>
                 🚀 Start Configuration
+              </Text>
+            </TouchableOpacity>
+
+            {/* GitHub Support Button */}
+            <TouchableOpacity
+              style={styles.githubButton}
+              onPress={handleOpenGitHub}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.githubButtonText}>
+                ⭐ Support us on GitHub
               </Text>
             </TouchableOpacity>
 
@@ -206,7 +220,7 @@ const WebViewComponent: React.FC<WebViewComponentProps> = ({
 
             {/* Footer */}
             <Text style={styles.footerText}>
-              Version 1.1.1 • by Rushb
+              Version 1.1.2 • by Rushb
             </Text>
           </Animated.View>
         </ScrollView>
@@ -468,6 +482,22 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  githubButton: {
+    marginTop: 20,
+    marginBottom: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    alignItems: 'center',
+  },
+  githubButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   footerText: {
     marginTop: 32,

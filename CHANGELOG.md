@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ***
 
 
+## [1.1.2] - 2025-12-19
+
+
+### Added
+- 📊 **Status Bar Display**: New option to show/hide Android status bar (battery, WiFi, Bluetooth, sound)
+  - Configurable from settings screen
+  - Shows system status icons: battery level, WiFi connection, Bluetooth, volume, etc.
+  - Useful for monitoring device status without exiting kiosk mode
+- 🧪 **Test Mode for External App**: Safety feature for External App Mode
+  - Enabled by default for security
+  - Allows returning to FreeKiosk using Android back button
+  - Prevents accidental lockout during testing
+  - Can be disabled for production deployments
+
+
+***
+
+
 ## [1.1.1] - 2025-12-16
 
 
@@ -182,9 +200,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ***
 
 
+[1.1.2]: https://github.com/rushb-fr/freekiosk/releases/tag/v1.1.2
+[1.1.1]: https://github.com/rushb-fr/freekiosk/releases/tag/v1.1.1
+[1.1.0]: https://github.com/rushb-fr/freekiosk/releases/tag/v1.1.0
 [1.0.5]: https://github.com/rushb-fr/freekiosk/releases/tag/v1.0.5
 [1.0.4]: https://github.com/rushb-fr/freekiosk/releases/tag/v1.0.4
 [1.0.3]: https://github.com/rushb-fr/freekiosk/releases/tag/v1.0.3
 [1.0.2]: https://github.com/rushb-fr/freekiosk/releases/tag/v1.0.2
 [1.0.1]: https://github.com/rushb-fr/freekiosk/releases/tag/v1.0.1
-[Unreleased]: https://github.com/rushb-fr/freekiosk/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/rushb-fr/freekiosk/compare/v1.1.2...HEAD

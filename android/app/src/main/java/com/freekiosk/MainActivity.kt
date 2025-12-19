@@ -345,7 +345,7 @@ class MainActivity : ReactActivity() {
   }
 
   override fun onBackPressed() {
-    // Bloquer le bouton retour
+    // Bloquer le bouton retour en mode kiosk (sauf si mode test activé)
   }
 
   private fun bringToFrontWithPinNavigation() {
@@ -367,6 +367,7 @@ class MainActivity : ReactActivity() {
       externalAppPackage = prefs.getString("@kiosk_external_app_package", null)
       isExternalAppMode = displayMode == "external_app"
       isDeviceOwner = devicePolicyManager.isDeviceOwnerApp(packageName)
+      
       DebugLog.d("MainActivity", "External app config: mode=$displayMode, package=$externalAppPackage, isDeviceOwner=$isDeviceOwner")
     } catch (e: Exception) {
       DebugLog.errorProduction("MainActivity", "Error reading external app config: ${e.message}")

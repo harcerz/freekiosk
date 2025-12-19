@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, NativeEventEmitter, NativeModules, AppState } from 'react-native';
 import RNBrightness from 'react-native-brightness-newarch';
 import WebViewComponent from '../components/WebViewComponent';
+import StatusBar from '../components/StatusBar';
 import MotionDetector from '../components/MotionDetector';
 import ExternalAppOverlay from '../components/ExternalAppOverlay';
 import { StorageService } from '../utils/storage';
@@ -30,6 +31,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const [inactivityEnabled, setInactivityEnabled] = useState(true);
   const [inactivityDelay, setInactivityDelay] = useState(600000);
   const [motionEnabled, setMotionEnabled] = useState(false);
+  const [statusBarEnabled, setStatusBarEnabled] = useState(false);
   const timerRef = useRef<any>(null);
 
   // External app states
@@ -39,6 +41,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const [appCrashCount, setAppCrashCount] = useState<number>(0);
   const relaunchTimerRef = useRef<any>(null);
   const [isAppLaunched, setIsAppLaunched] = useState<boolean>(false);
+  const [externalAppTestMode, setExternalAppTestMode] = useState<boolean>(true);
   const appStateRef = useRef(AppState.currentState);
 
   // AppState listener - détecte quand l'app revient au premier plan
@@ -51,6 +54,14 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         console.log('[KioskScreen] App came to foreground, checking native block flag...');
         
         try {
+          // En mode test, ne JAMAIS relancer automatiquement l'app externe
+          if (externalAppTestMode) {
+            console.log('[KioskScreen] Test mode enabled - NOT auto-relaunching');
+            setIsAppLaunched(false);
+            appStateRef.current = nextAppState;
+            return;
+          }
+          
           // Vérifier le flag natif (plus fiable que le ref React)
           const shouldBlock = await KioskModule.shouldBlockAutoRelaunch();
           console.log(`[KioskScreen] Native shouldBlockAutoRelaunch = ${shouldBlock}`);
@@ -78,7 +89,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     return () => {
       subscription.remove();
     };
-  }, [displayMode, externalAppPackage, autoRelaunchApp]);
+  }, [displayMode, externalAppPackage, autoRelaunchApp, externalAppTestMode]);
 
   useEffect(() => {
     const unsubscribeFocus = navigation.addListener('focus', () => {
@@ -167,6 +178,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedInactivityEnabled = await StorageService.getScreensaverInactivityEnabled();
       const savedInactivityDelay = await StorageService.getScreensaverInactivityDelay();
       const savedMotionEnabled = await StorageService.getScreensaverMotionEnabled();
+      const savedStatusBarEnabled = await StorageService.getStatusBarEnabled();
 
       console.log('[DEBUG loadSettings] URL:', savedUrl);
       console.log('[DEBUG loadSettings] Screensaver enabled:', savedScreensaverEnabled);
@@ -175,6 +187,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       console.log('[DEBUG loadSettings] Inactivity enabled:', savedInactivityEnabled);
       console.log('[DEBUG loadSettings] Inactivity delay (ms):', savedInactivityDelay);
       console.log('[DEBUG loadSettings] Motion enabled:', savedMotionEnabled);
+      console.log('[DEBUG loadSettings] Status bar enabled:', savedStatusBarEnabled);
 
       if (savedUrl) setUrl(savedUrl);
       setAutoReload(savedAutoReload);
@@ -184,6 +197,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       setInactivityEnabled(savedInactivityEnabled ?? true);
       setInactivityDelay(savedInactivityDelay ?? 600000);
       setMotionEnabled(savedMotionEnabled ?? false);
+      setStatusBarEnabled(savedStatusBarEnabled ?? false);
 
       // Load external app settings
       const savedDisplayMode = await StorageService.getDisplayMode();
@@ -194,9 +208,12 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       console.log('[DEBUG loadSettings] External app package:', savedExternalAppPackage);
       console.log('[DEBUG loadSettings] Auto relaunch app:', savedAutoRelaunchApp);
 
+      const savedExternalAppTestMode = await StorageService.getExternalAppTestMode();
+
       setDisplayMode(savedDisplayMode);
       setExternalAppPackage(savedExternalAppPackage);
       setAutoRelaunchApp(savedAutoRelaunchApp);
+      setExternalAppTestMode(savedExternalAppTestMode);
 
       if (savedKioskEnabled) {
         try {
@@ -353,11 +370,15 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       {displayMode === 'webview' ? (
-        <WebViewComponent url={url} autoReload={autoReload} onUserInteraction={onUserInteraction} />
+        <>
+          {statusBarEnabled && <StatusBar />}
+          <WebViewComponent url={url} autoReload={autoReload} onUserInteraction={onUserInteraction} />
+        </>
       ) : (
         <ExternalAppOverlay
           externalAppPackage={externalAppPackage}
           isAppLaunched={isAppLaunched}
+          testModeEnabled={externalAppTestMode}
           onReturnToApp={handleReturnToExternalApp}
           onGoToSettings={handleGoToSettings}
         />

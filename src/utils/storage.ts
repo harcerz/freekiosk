@@ -19,6 +19,8 @@ const KEYS = {
   AUTO_RELAUNCH_APP: '@kiosk_auto_relaunch_app',
   OVERLAY_BUTTON_VISIBLE: '@kiosk_overlay_button_visible',
   PIN_MAX_ATTEMPTS: '@kiosk_pin_max_attempts',
+  STATUS_BAR_ENABLED: '@kiosk_status_bar_enabled',
+  EXTERNAL_APP_TEST_MODE: '@kiosk_external_app_test_mode',
   // Legacy keys for backward compatibility
   SCREENSAVER_DELAY: '@screensaver_delay',
   MOTION_DETECTION_ENABLED: '@motion_detection_enabled',
@@ -143,6 +145,7 @@ export const StorageService = {
         KEYS.AUTO_RELAUNCH_APP,
         KEYS.OVERLAY_BUTTON_VISIBLE,
         KEYS.PIN_MAX_ATTEMPTS,
+        KEYS.STATUS_BAR_ENABLED,
         // Legacy keys
         KEYS.SCREENSAVER_DELAY,
         KEYS.MOTION_DETECTION_ENABLED,
@@ -469,6 +472,44 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting PIN max attempts:', error);
       return 5;
+    }
+  },
+
+  //STATUS BAR
+  saveStatusBarEnabled: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.STATUS_BAR_ENABLED, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving status bar enabled:', error);
+    }
+  },
+
+  getStatusBarEnabled: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.STATUS_BAR_ENABLED);
+      return value === null ? false : JSON.parse(value); // Par défaut false (désactivée)
+    } catch (error) {
+      console.error('Error getting status bar enabled:', error);
+      return false;
+    }
+  },
+
+  //EXTERNAL APP TEST MODE
+  saveExternalAppTestMode: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.EXTERNAL_APP_TEST_MODE, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving external app test mode:', error);
+    }
+  },
+
+  getExternalAppTestMode: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.EXTERNAL_APP_TEST_MODE);
+      return value === null ? true : JSON.parse(value); // Par défaut true (activé pour sécurité)
+    } catch (error) {
+      console.error('Error getting external app test mode:', error);
+      return true;
     }
   },
 
