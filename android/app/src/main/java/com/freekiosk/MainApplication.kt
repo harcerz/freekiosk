@@ -23,6 +23,7 @@ class MainApplication : Application(), ReactApplication {
           add(LauncherPackage())
           add(OverlayServicePackage())
           add(SystemInfoPackage())
+          add(UpdatePackage())
         },
     )
   }

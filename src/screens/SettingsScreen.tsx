@@ -22,6 +22,7 @@ import CertificateModuleTyped, { CertificateInfo } from '../utils/CertificateMod
 import AppLauncherModule, { AppInfo } from '../utils/AppLauncherModule';
 import OverlayPermissionModule from '../utils/OverlayPermissionModule';
 import LauncherModule from '../utils/LauncherModule';
+import UpdateModule from '../utils/UpdateModule';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -54,7 +55,8 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [externalAppPackage, setExternalAppPackage] = useState<string>('');
   const [autoRelaunchApp, setAutoRelaunchApp] = useState<boolean>(true);
   const [overlayButtonVisible, setOverlayButtonVisible] = useState<boolean>(false);
-  const [externalAppTestMode, setExternalAppTestMode] = useState<boolean>(true);
+  const [backButtonMode, setBackButtonMode] = useState<string>('test');
+  const [backButtonTimerDelay, setBackButtonTimerDelay] = useState<string>('10');
   const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
   const [showAppPicker, setShowAppPicker] = useState<boolean>(false);
   const [loadingApps, setLoadingApps] = useState<boolean>(false);
@@ -63,14 +65,36 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [statusBarEnabled, setStatusBarEnabled] = useState<boolean>(false);
   const [statusBarOnOverlay, setStatusBarOnOverlay] = useState<boolean>(true);
   const [statusBarOnReturn, setStatusBarOnReturn] = useState<boolean>(true);
+  const [showBattery, setShowBattery] = useState<boolean>(true);
+  const [showWifi, setShowWifi] = useState<boolean>(true);
+  const [showBluetooth, setShowBluetooth] = useState<boolean>(true);
+  const [showVolume, setShowVolume] = useState<boolean>(true);
+  const [showTime, setShowTime] = useState<boolean>(true);
   const [keyboardMode, setKeyboardMode] = useState<string>('default');
+  
+  // Update states
+  const [checkingUpdate, setCheckingUpdate] = useState<boolean>(false);
+  const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
+  const [updateInfo, setUpdateInfo] = useState<any>(null);
+  const [downloading, setDownloading] = useState<boolean>(false);
+  const [currentVersion, setCurrentVersion] = useState<string>('');
 
   useEffect(() => {
     loadSettings();
     loadCertificates();
     checkOverlayPermission();
     checkDeviceOwner();
+    loadCurrentVersion();
   }, []);
+
+  const loadCurrentVersion = async () => {
+    try {
+      const versionInfo = await UpdateModule.getCurrentVersion();
+      setCurrentVersion(versionInfo.versionName);
+    } catch (error) {
+      console.error('Failed to load current version:', error);
+    }
+  };
 
   const checkDeviceOwner = async () => {
     try {
@@ -161,7 +185,13 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const savedStatusBarEnabled = await StorageService.getStatusBarEnabled();
     const savedStatusBarOnOverlay = await StorageService.getStatusBarOnOverlay();
     const savedStatusBarOnReturn = await StorageService.getStatusBarOnReturn();
-    const savedExternalAppTestMode = await StorageService.getExternalAppTestMode();
+    const savedShowBattery = await StorageService.getStatusBarShowBattery();
+    const savedShowWifi = await StorageService.getStatusBarShowWifi();
+    const savedShowBluetooth = await StorageService.getStatusBarShowBluetooth();
+    const savedShowVolume = await StorageService.getStatusBarShowVolume();
+    const savedShowTime = await StorageService.getStatusBarShowTime();
+    const savedBackButtonMode = await StorageService.getBackButtonMode();
+    const savedBackButtonTimerDelay = await StorageService.getBackButtonTimerDelay();
     const savedKeyboardMode = await StorageService.getKeyboardMode();
 
     setDisplayMode(savedDisplayMode);
@@ -173,7 +203,13 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     setStatusBarEnabled(savedStatusBarEnabled);
     setStatusBarOnOverlay(savedStatusBarOnOverlay);
     setStatusBarOnReturn(savedStatusBarOnReturn);
-    setExternalAppTestMode(savedExternalAppTestMode);
+    setShowBattery(savedShowBattery);
+    setShowWifi(savedShowWifi);
+    setShowBluetooth(savedShowBluetooth);
+    setShowVolume(savedShowVolume);
+    setShowTime(savedShowTime);
+    setBackButtonMode(savedBackButtonMode);
+    setBackButtonTimerDelay(String(savedBackButtonTimerDelay));
     setKeyboardMode(savedKeyboardMode);
   };
 
@@ -296,6 +332,103 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     // This affects the ExternalAppOverlay component, no native update needed
   };
 
+  const handleShowBatteryChange = (value: boolean) => {
+    setShowBattery(value);
+  };
+
+  const handleShowWifiChange = (value: boolean) => {
+    setShowWifi(value);
+  };
+
+  const handleShowBluetoothChange = (value: boolean) => {
+    setShowBluetooth(value);
+  };
+
+  const handleShowVolumeChange = (value: boolean) => {
+    setShowVolume(value);
+  };
+
+  const handleShowTimeChange = (value: boolean) => {
+    setShowTime(value);
+  };
+
+  const handleCheckForUpdates = async () => {
+    setCheckingUpdate(true);
+    setUpdateAvailable(false);
+    setUpdateInfo(null);
+    
+    try {
+      console.log('Getting current version...');
+      const currentVersionInfo = await UpdateModule.getCurrentVersion();
+      console.log('Current version:', currentVersionInfo);
+      
+      console.log('Checking for updates...');
+      const latestUpdate = await UpdateModule.checkForUpdates();
+      
+      console.log('Update check result:', JSON.stringify(latestUpdate, null, 2));
+      console.log('Download URL:', latestUpdate.downloadUrl);
+      
+      // Compare versions
+      const currentVer = currentVersionInfo.versionName;
+      const latestVer = latestUpdate.version;
+      
+      console.log(`Comparing versions: current=${currentVer}, latest=${latestVer}`);
+      
+      if (latestVer !== currentVer) {
+        setUpdateAvailable(true);
+        setUpdateInfo(latestUpdate);
+        console.log('Update available, updateInfo set:', latestUpdate);
+        Alert.alert(
+          '🎉 Update Available',
+          `New version ${latestVer} is available!\n\nCurrent: ${currentVer}\n\nWould you like to download and install it?`,
+          [
+            { text: 'Not Now', style: 'cancel' },
+            { text: 'Update', onPress: () => handleDownloadUpdate(latestUpdate) }
+          ]
+        );
+      } else {
+        Alert.alert('✓ Up to Date', `You are running the latest version (${currentVer})`);
+      }
+    } catch (error: any) {
+      console.error('Update check error:', error);
+      console.error('Error stack:', error.stack);
+      Alert.alert('Error', `Failed to check for updates: ${error.message || error.toString()}`);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const handleDownloadUpdate = async (update?: any) => {
+    // Utiliser le paramètre passé ou le state
+    const updateData = update || updateInfo;
+    
+    console.log('handleDownloadUpdate called');
+    console.log('updateData:', updateData);
+    
+    if (!updateData || !updateData.downloadUrl) {
+      console.error('No download URL - updateData:', JSON.stringify(updateData, null, 2));
+      Alert.alert('Error', `No download URL available.`);
+      return;
+    }
+    
+    console.log('Starting download:', updateData.downloadUrl);
+    
+    setDownloading(true);
+    
+    try {
+      await UpdateModule.downloadAndInstall(updateData.downloadUrl, updateData.version);
+      
+      // Download complete, installation will start automatically
+      setDownloading(false);
+      Alert.alert('✅ Download Complete', 'The update has been downloaded. Installing...');
+    } catch (error: any) {
+      setDownloading(false);
+      const errorMsg = error?.message || error?.toString() || 'Unknown error';
+      Alert.alert('Error', `Failed to download update:\n\n${errorMsg}`);
+      console.error('Download failed:', error);
+    }
+  };
+
   const handleSave = async (): Promise<void> => {
     // Validate based on display mode
     if (displayMode === 'webview') {
@@ -390,11 +523,14 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       return;
     }
 
-    // Validate PIN max attempts
-    if (pinMaxAttempts < 1 || pinMaxAttempts > 100) {
+    // Validate and update PIN max attempts from text field
+    const pinMaxAttemptsNumber = parseInt(pinMaxAttemptsText, 10);
+    if (isNaN(pinMaxAttemptsNumber) || pinMaxAttemptsNumber < 1 || pinMaxAttemptsNumber > 100) {
       Alert.alert('Error', 'PIN max attempts must be between 1 and 100');
       return;
     }
+    // Update state with validated value
+    setPinMaxAttempts(pinMaxAttemptsNumber);
 
     // Save URL only in webview mode
     if (displayMode === 'webview') {
@@ -408,8 +544,8 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       setIsPinConfigured(true);
     }
 
-    // Save PIN max attempts
-    await StorageService.savePinMaxAttempts(pinMaxAttempts);
+    // Save PIN max attempts (using the validated value)
+    await StorageService.savePinMaxAttempts(pinMaxAttemptsNumber);
 
     // Save settings based on mode
     if (displayMode === 'webview') {
@@ -440,7 +576,14 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     await StorageService.saveStatusBarEnabled(statusBarEnabled);
     await StorageService.saveStatusBarOnOverlay(statusBarOnOverlay);
     await StorageService.saveStatusBarOnReturn(statusBarOnReturn);
-    await StorageService.saveExternalAppTestMode(externalAppTestMode);
+    await StorageService.saveStatusBarShowBattery(showBattery);
+    await StorageService.saveStatusBarShowWifi(showWifi);
+    await StorageService.saveStatusBarShowBluetooth(showBluetooth);
+    await StorageService.saveStatusBarShowVolume(showVolume);
+    await StorageService.saveStatusBarShowTime(showTime);
+    await StorageService.saveBackButtonMode(backButtonMode);
+    const timerDelay = parseInt(backButtonTimerDelay, 10);
+    await StorageService.saveBackButtonTimerDelay(isNaN(timerDelay) ? 10 : Math.max(1, Math.min(3600, timerDelay)));
     await StorageService.saveKeyboardMode(keyboardMode);
 
     // Update overlay button opacity and test mode
@@ -449,9 +592,11 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       try {
         const { OverlayServiceModule } = NativeModules;
         await OverlayServiceModule.setButtonOpacity(opacity);
-        await OverlayServiceModule.setTestMode(externalAppTestMode);
+        await OverlayServiceModule.setTestMode(backButtonMode === 'test');
         // Status bar on overlay depends on both flags
         await OverlayServiceModule.setStatusBarEnabled(statusBarEnabled && statusBarOnOverlay);
+        // Update status bar items visibility
+        await OverlayServiceModule.setStatusBarItems(showBattery, showWifi, showBluetooth, showVolume, showTime);
       } catch (error) {
         // Silent fail
       }
@@ -673,16 +818,88 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-      <View style={styles.content}>
-        <Text style={styles.title}>⚙️ Kiosk Configuration</Text>
-
-        {/* Device Owner Status Badge */}
-        <View style={[styles.deviceOwnerBadge, isDeviceOwner ? styles.deviceOwnerBadgeActive : styles.deviceOwnerBadgeInactive]}>
-          <Text style={[styles.deviceOwnerBadgeText, isDeviceOwner ? styles.deviceOwnerBadgeTextActive : styles.deviceOwnerBadgeTextInactive]}>
-            {isDeviceOwner ? '🔒 Device Owner Mode Active' : '🔓 Device Owner Mode Not Active'}
-          </Text>
+    <>
+      {/* Download Progress Modal */}
+      <Modal
+        visible={downloading}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.downloadModalOverlay}>
+          <View style={styles.downloadModalContent}>
+            <Text style={styles.downloadModalTitle}>📥 Downloading Update</Text>
+            <Text style={styles.downloadModalText}>
+              Please wait while the update is being downloaded...
+            </Text>
+            <Text style={styles.downloadModalHint}>
+              Do not close the app during download.
+            </Text>
+          </View>
         </View>
+      </Modal>
+
+      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+        <View style={styles.content}>
+          <Text style={styles.title}>⚙️ Kiosk Configuration</Text>
+
+          {/* Device Owner Status Badge */}
+          <View style={[styles.deviceOwnerBadge, isDeviceOwner ? styles.deviceOwnerBadgeActive : styles.deviceOwnerBadgeInactive]}>
+            <Text style={[styles.deviceOwnerBadgeText, isDeviceOwner ? styles.deviceOwnerBadgeTextActive : styles.deviceOwnerBadgeTextInactive]}>
+              {isDeviceOwner ? '🔒 Device Owner Mode Active' : '🔓 Device Owner Mode Not Active'}
+            </Text>
+          </View>
+
+        {/* Update Section - Only visible for Device Owners */}
+        {isDeviceOwner && (
+          <View style={styles.section}>
+            <Text style={styles.label}>🔄 App Updates</Text>
+            <View style={styles.infoBox}>
+              <Text style={styles.infoTitle}>Current Version</Text>
+              <Text style={styles.infoText}>{currentVersion}</Text>
+            </View>
+            
+            {updateAvailable && updateInfo && (
+              <View style={[styles.infoBox, { backgroundColor: '#e8f5e9', marginTop: 10 }]}>
+                <Text style={[styles.infoTitle, { color: '#2e7d32' }]}>🎉 Update Available</Text>
+                <Text style={styles.infoText}>
+                  Version {updateInfo.version} is available!
+                </Text>
+                {updateInfo.notes && (
+                  <Text style={[styles.infoText, { marginTop: 5, fontSize: 12 }]}>
+                    {updateInfo.notes.substring(0, 150)}...
+                  </Text>
+                )}
+              </View>
+            )}
+            
+            <TouchableOpacity
+              style={[styles.saveButton, checkingUpdate || downloading ? styles.saveButtonDisabled : null]}
+              onPress={handleCheckForUpdates}
+              disabled={checkingUpdate || downloading}
+            >
+              <Text style={styles.saveButtonText}>
+                {checkingUpdate ? '⏳ Checking...' : downloading ? '📥 Downloading...' : '🔍 Check for Updates'}
+              </Text>
+            </TouchableOpacity>
+            
+            {updateAvailable && updateInfo && (
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: '#4CAF50', marginTop: 10 }, downloading ? styles.saveButtonDisabled : null]}
+                onPress={handleDownloadUpdate}
+                disabled={downloading}
+              >
+                <Text style={styles.saveButtonText}>
+                  {downloading ? '📥 Downloading...' : '⬇️ Download & Install Update'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            <Text style={styles.hint}>
+              Device Owner mode: Manual updates via GitHub. Regular users receive updates through Play Store.
+            </Text>
+          </View>
+        )}
 
         {/* Vos sections existantes... */}
         {/* Display Mode Section */}
@@ -850,22 +1067,72 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               </View>
             </View>
 
-            {/* Test Mode */}
+            {/* Back Button Mode */}
             <View style={styles.section}>
-              <View style={styles.switchRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>🧪 Test Mode</Text>
-                  <Text style={styles.hint}>
-                    Allows using the Android back button to return to FreeKiosk (recommended for testing)
-                  </Text>
+              <Text style={styles.label}>🔙 Back Button Behavior</Text>
+              <Text style={styles.hint}>
+                How the app behaves when the Android back button is pressed
+              </Text>
+
+              {/* Test Mode Option */}
+              <TouchableOpacity
+                style={[styles.radioOption, backButtonMode === 'test' && styles.radioOptionSelected]}
+                onPress={() => setBackButtonMode('test')}
+              >
+                <View style={styles.radioCircle}>
+                  {backButtonMode === 'test' && <View style={styles.radioCircleFilled} />}
                 </View>
-                <Switch
-                  value={externalAppTestMode}
-                  onValueChange={setExternalAppTestMode}
-                  trackColor={{ false: '#767577', true: '#81b0ff' }}
-                  thumbColor={externalAppTestMode ? '#0066cc' : '#f4f3f4'}
-                />
-              </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.radioLabel}>🧪 Test Mode</Text>
+                  <Text style={styles.radioHint}>Back button works normally, no auto-relaunch (for testing)</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Immediate Option */}
+              <TouchableOpacity
+                style={[styles.radioOption, backButtonMode === 'immediate' && styles.radioOptionSelected]}
+                onPress={() => setBackButtonMode('immediate')}
+              >
+                <View style={styles.radioCircle}>
+                  {backButtonMode === 'immediate' && <View style={styles.radioCircleFilled} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.radioLabel}>⚡ Immediate Return</Text>
+                  <Text style={styles.radioHint}>Relaunches app instantly</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Timer Option */}
+              <TouchableOpacity
+                style={[styles.radioOption, backButtonMode === 'timer' && styles.radioOptionSelected]}
+                onPress={() => setBackButtonMode('timer')}
+              >
+                <View style={styles.radioCircle}>
+                  {backButtonMode === 'timer' && <View style={styles.radioCircleFilled} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.radioLabel}>⏱️ Delayed Return</Text>
+                  <Text style={styles.radioHint}>Waits X seconds then relaunches app automatically</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Timer Input - Only visible when timer mode selected */}
+              {backButtonMode === 'timer' && (
+                <View style={{ marginTop: 12, paddingLeft: 32 }}>
+                  <Text style={styles.hint}>Countdown duration (1-3600 seconds)</Text>
+                  <TextInput
+                    style={[styles.input, { marginTop: 8, width: 120 }]}
+                    value={backButtonTimerDelay}
+                    onChangeText={(text) => {
+                      const num = text.replace(/[^0-9]/g, '');
+                      setBackButtonTimerDelay(num);
+                    }}
+                    keyboardType="numeric"
+                    placeholder="10"
+                    maxLength={4}
+                  />
+                </View>
+              )}
             </View>
 
             {/* Return Mechanism Info */}
@@ -995,12 +1262,86 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
           {statusBarEnabled && (
             <View style={styles.infoSubBox}>
               <Text style={styles.infoSubText}>
-                ℹ️ Status bar displays: Battery (with charging indicator ⚡), Wi-Fi (✓/✗), Bluetooth (✓/✗), Volume level, Current time
+                ℹ️ Items displayed: Battery (⚡), Wi-Fi (✓/✗), Bluetooth (✓/✗), Volume, Time
               </Text>
+              <Text style={styles.infoSubText}>
+                {'\n'}📐 Layout: Items positioned left and right to avoid center camera area
+              </Text>
+
+              {/* Customize Status Bar Items */}
+              <View style={{ marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#e1e1e1' }}>
+                <Text style={[styles.label, { fontSize: 14, marginBottom: 8 }]}>🎨 Customize Items</Text>
+                
+                {/* Battery */}
+                <View style={[styles.switchRow, { marginTop: 4, paddingLeft: 8 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.label, { fontSize: 13 }]}>🔋 Battery</Text>
+                  </View>
+                  <Switch
+                    value={showBattery}
+                    onValueChange={handleShowBatteryChange}
+                    trackColor={{ false: '#767577', true: '#81b0ff' }}
+                    thumbColor={showBattery ? '#0066cc' : '#f4f3f4'}
+                  />
+                </View>
+
+                {/* WiFi */}
+                <View style={[styles.switchRow, { marginTop: 4, paddingLeft: 8 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.label, { fontSize: 13 }]}>📶 Wi-Fi</Text>
+                  </View>
+                  <Switch
+                    value={showWifi}
+                    onValueChange={handleShowWifiChange}
+                    trackColor={{ false: '#767577', true: '#81b0ff' }}
+                    thumbColor={showWifi ? '#0066cc' : '#f4f3f4'}
+                  />
+                </View>
+
+                {/* Bluetooth */}
+                <View style={[styles.switchRow, { marginTop: 4, paddingLeft: 8 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.label, { fontSize: 13 }]}>📘 Bluetooth</Text>
+                  </View>
+                  <Switch
+                    value={showBluetooth}
+                    onValueChange={handleShowBluetoothChange}
+                    trackColor={{ false: '#767577', true: '#81b0ff' }}
+                    thumbColor={showBluetooth ? '#0066cc' : '#f4f3f4'}
+                  />
+                </View>
+
+                {/* Volume */}
+                <View style={[styles.switchRow, { marginTop: 4, paddingLeft: 8 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.label, { fontSize: 13 }]}>🔊 Volume</Text>
+                  </View>
+                  <Switch
+                    value={showVolume}
+                    onValueChange={handleShowVolumeChange}
+                    trackColor={{ false: '#767577', true: '#81b0ff' }}
+                    thumbColor={showVolume ? '#0066cc' : '#f4f3f4'}
+                  />
+                </View>
+
+                {/* Time */}
+                <View style={[styles.switchRow, { marginTop: 4, paddingLeft: 8 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.label, { fontSize: 13 }]}>🕐 Time</Text>
+                  </View>
+                  <Switch
+                    value={showTime}
+                    onValueChange={handleShowTimeChange}
+                    trackColor={{ false: '#767577', true: '#81b0ff' }}
+                    thumbColor={showTime ? '#0066cc' : '#f4f3f4'}
+                  />
+                </View>
+              </View>
+
               {displayMode === 'external_app' && (
                 <>
-                  <Text style={styles.infoSubText}>
-                    {'\n'}External app mode: Configure where the status bar appears
+                  <Text style={[styles.infoSubText, { marginTop: 16 }]}>
+                    External app mode: Configure where the status bar appears
                   </Text>
                   {/* Sub-option: Status bar on overlay (external app) */}
                   <View style={[styles.switchRow, { marginTop: 12, paddingLeft: 8 }]}>
@@ -1388,6 +1729,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
         </View>
       </Modal>
     </ScrollView>
+    </>
   );
 };
 
@@ -1515,6 +1857,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 5,
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#cccccc',
+    shadowOpacity: 0.1,
+    elevation: 2,
   },
   saveButtonText: {
     color: '#fff',
@@ -1880,6 +2227,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  radioCircleFilled: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#0066cc',
+  },
   radioCircleSelected: {
     width: 12,
     height: 12,
@@ -1895,6 +2248,42 @@ const styles = StyleSheet.create({
   radioHint: {
     fontSize: 13,
     color: '#666',
+  },
+  downloadModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  downloadModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 30,
+    marginHorizontal: 40,
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  downloadModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 15,
+  },
+  downloadModalText: {
+    fontSize: 16,
+    color: '#555',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  downloadModalHint: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
 

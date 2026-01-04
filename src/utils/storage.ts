@@ -22,7 +22,14 @@ const KEYS = {
   STATUS_BAR_ENABLED: '@kiosk_status_bar_enabled',
   STATUS_BAR_ON_OVERLAY: '@kiosk_status_bar_on_overlay',
   STATUS_BAR_ON_RETURN: '@kiosk_status_bar_on_return',
+  STATUS_BAR_SHOW_BATTERY: '@kiosk_status_bar_show_battery',
+  STATUS_BAR_SHOW_WIFI: '@kiosk_status_bar_show_wifi',
+  STATUS_BAR_SHOW_BLUETOOTH: '@kiosk_status_bar_show_bluetooth',
+  STATUS_BAR_SHOW_VOLUME: '@kiosk_status_bar_show_volume',
+  STATUS_BAR_SHOW_TIME: '@kiosk_status_bar_show_time',
   EXTERNAL_APP_TEST_MODE: '@kiosk_external_app_test_mode',
+  BACK_BUTTON_MODE: '@kiosk_back_button_mode',
+  BACK_BUTTON_TIMER_DELAY: '@kiosk_back_button_timer_delay',
   KEYBOARD_MODE: '@kiosk_keyboard_mode',
   // Legacy keys for backward compatibility
   SCREENSAVER_DELAY: '@screensaver_delay',
@@ -151,6 +158,11 @@ export const StorageService = {
         KEYS.STATUS_BAR_ENABLED,
         KEYS.STATUS_BAR_ON_OVERLAY,
         KEYS.STATUS_BAR_ON_RETURN,
+        KEYS.STATUS_BAR_SHOW_BATTERY,
+        KEYS.STATUS_BAR_SHOW_WIFI,
+        KEYS.STATUS_BAR_SHOW_BLUETOOTH,
+        KEYS.STATUS_BAR_SHOW_VOLUME,
+        KEYS.STATUS_BAR_SHOW_TIME,
         // Legacy keys
         KEYS.SCREENSAVER_DELAY,
         KEYS.MOTION_DETECTION_ENABLED,
@@ -537,6 +549,97 @@ export const StorageService = {
     }
   },
 
+  //STATUS BAR ITEMS VISIBILITY
+  saveStatusBarShowBattery: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.STATUS_BAR_SHOW_BATTERY, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving status bar show battery:', error);
+    }
+  },
+
+  getStatusBarShowBattery: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.STATUS_BAR_SHOW_BATTERY);
+      return value === null ? true : JSON.parse(value);
+    } catch (error) {
+      console.error('Error getting status bar show battery:', error);
+      return true;
+    }
+  },
+
+  saveStatusBarShowWifi: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.STATUS_BAR_SHOW_WIFI, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving status bar show wifi:', error);
+    }
+  },
+
+  getStatusBarShowWifi: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.STATUS_BAR_SHOW_WIFI);
+      return value === null ? true : JSON.parse(value);
+    } catch (error) {
+      console.error('Error getting status bar show wifi:', error);
+      return true;
+    }
+  },
+
+  saveStatusBarShowBluetooth: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.STATUS_BAR_SHOW_BLUETOOTH, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving status bar show bluetooth:', error);
+    }
+  },
+
+  getStatusBarShowBluetooth: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.STATUS_BAR_SHOW_BLUETOOTH);
+      return value === null ? true : JSON.parse(value);
+    } catch (error) {
+      console.error('Error getting status bar show bluetooth:', error);
+      return true;
+    }
+  },
+
+  saveStatusBarShowVolume: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.STATUS_BAR_SHOW_VOLUME, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving status bar show volume:', error);
+    }
+  },
+
+  getStatusBarShowVolume: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.STATUS_BAR_SHOW_VOLUME);
+      return value === null ? true : JSON.parse(value);
+    } catch (error) {
+      console.error('Error getting status bar show volume:', error);
+      return true;
+    }
+  },
+
+  saveStatusBarShowTime: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.STATUS_BAR_SHOW_TIME, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving status bar show time:', error);
+    }
+  },
+
+  getStatusBarShowTime: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.STATUS_BAR_SHOW_TIME);
+      return value === null ? true : JSON.parse(value);
+    } catch (error) {
+      console.error('Error getting status bar show time:', error);
+      return true;
+    }
+  },
+
   //EXTERNAL APP TEST MODE
   saveExternalAppTestMode: async (value: boolean): Promise<void> => {
     try {
@@ -572,6 +675,45 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting keyboard mode:', error);
       return 'default';
+    }
+  },
+
+  // Back Button Mode: 'test' | 'immediate' | 'timer'
+  saveBackButtonMode: async (mode: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.BACK_BUTTON_MODE, mode);
+    } catch (error) {
+      console.error('Error saving back button mode:', error);
+    }
+  },
+
+  getBackButtonMode: async (): Promise<string> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.BACK_BUTTON_MODE);
+      return value || 'test'; // Par défaut test (sécurité)
+    } catch (error) {
+      console.error('Error getting back button mode:', error);
+      return 'test';
+    }
+  },
+
+  // Back Button Timer Delay (en secondes, 1-3600)
+  saveBackButtonTimerDelay: async (delay: number): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.BACK_BUTTON_TIMER_DELAY, String(delay));
+    } catch (error) {
+      console.error('Error saving back button timer delay:', error);
+    }
+  },
+
+  getBackButtonTimerDelay: async (): Promise<number> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.BACK_BUTTON_TIMER_DELAY);
+      const delay = value ? parseInt(value, 10) : 10;
+      return isNaN(delay) ? 10 : Math.max(1, Math.min(3600, delay));
+    } catch (error) {
+      console.error('Error getting back button timer delay:', error);
+      return 10;
     }
   },
 

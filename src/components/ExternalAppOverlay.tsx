@@ -5,8 +5,13 @@ import StatusBar from './StatusBar';
 interface ExternalAppOverlayProps {
   externalAppPackage: string | null;
   isAppLaunched: boolean;
-  testModeEnabled: boolean;
+  backButtonMode: string;
   showStatusBar?: boolean;
+  showBattery?: boolean;
+  showWifi?: boolean;
+  showBluetooth?: boolean;
+  showVolume?: boolean;
+  showTime?: boolean;
   onReturnToApp: () => void;
   onGoToSettings: () => void;
 }
@@ -14,14 +19,27 @@ interface ExternalAppOverlayProps {
 const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
   externalAppPackage,
   isAppLaunched,
-  testModeEnabled,
+  backButtonMode,
   showStatusBar = false,
+  showBattery = true,
+  showWifi = true,
+  showBluetooth = true,
+  showVolume = true,
+  showTime = true,
   onReturnToApp,
   onGoToSettings,
 }) => {
   return (
     <View style={styles.container}>
-      {showStatusBar && <StatusBar />}
+      {showStatusBar && (
+        <StatusBar
+          showBattery={showBattery}
+          showWifi={showWifi}
+          showBluetooth={showBluetooth}
+          showVolume={showVolume}
+          showTime={showTime}
+        />
+      )}
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -59,8 +77,8 @@ const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
             </View>
           </View>
 
-          {/* Test Mode Warning */}
-          {testModeEnabled && (
+          {/* Mode Info - Only show in test mode */}
+          {backButtonMode === 'test' && (
             <View style={styles.warningContainer}>
               <View style={styles.warningCard}>
                 <Text style={styles.warningIcon}>🧪</Text>

@@ -71,7 +71,7 @@ Choose your operating system:
 **Option A: Homebrew** (recommended)
 brew install android-platform-tools
 
-text
+
 
 **Option B: Manual**
 1. Download [SDK Platform Tools](https://dl.google.com/android/repository/platform-tools-latest-darwin.zip)
@@ -82,12 +82,12 @@ text
 **Ubuntu/Debian:**
 sudo apt install adb
 
-text
+
 
 **Fedora:**
 sudo dnf install android-tools
 
-text
+
 
 ---
 
@@ -131,18 +131,18 @@ text
 cd C:\platform-tools
 adb devices
 
-text
+
 
 **Mac/Linux:**
 adb devices
 
-text
+
 
 You should see:
 List of devices attached
 ABC123XYZ device
 
-text
+
 
 If you see "unauthorized" → Check tablet screen for popup
 
@@ -151,13 +151,13 @@ If you see "unauthorized" → Check tablet screen for popup
 **Run this command:**
 adb shell dpm set-device-owner com.freekiosk/.DeviceAdminReceiver
 
-text
+
 
 **Expected output:**
 Success: Device owner set to package com.freekiosk
 Active admin set to component {com.freekiosk/com.freekiosk.DeviceAdminReceiver}
 
-text
+
 
 ✅ **Success!** Your tablet is now in Device Owner mode.
 
@@ -165,7 +165,7 @@ text
 
 adb reboot
 
-text
+
 
 ---
 
@@ -205,7 +205,7 @@ text
 cd C:\platform-tools
 adb devices
 
-text
+
 
 ### "Not allowed to set the device owner"
 
@@ -243,7 +243,7 @@ sudo adb kill-server
 sudo adb start-server
 adb devices
 
-text
+
 
 Or configure udev rules (permanent fix):
 sudo nano /etc/udev/rules.d/51-android.rules
@@ -251,7 +251,7 @@ sudo nano /etc/udev/rules.d/51-android.rules
 Add: SUBSYSTEM=="usb", ATTR{idVendor}=="[vendor_id]", MODE="0666", GROUP="plugdev"
 sudo udevadm control --reload-rules
 
-text
+
 
 ### Device Owner set but kiosk doesn't lock completely
 
@@ -269,14 +269,16 @@ text
 
 1. Tap 5 times in bottom-right corner
 2. Enter your PIN
-3. Tap "Exit Kiosk Mode"
-4. Device Owner is automatically removed
+3. Tap "⚠️ Remove Device Owner" button (NOT "Exit Kiosk Mode")
+4. Confirm the action
+5. Device Owner is removed and all settings are reset
+
+⚠️ **Note**: "Exit Kiosk Mode" only closes the app but keeps Device Owner active.
 
 ### Option 2: Via ADB
 
 adb shell dpm remove-active-admin com.freekiosk/.DeviceAdminReceiver
 
-text
 
 ---
 

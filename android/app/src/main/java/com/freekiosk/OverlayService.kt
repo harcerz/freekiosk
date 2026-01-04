@@ -48,6 +48,18 @@ class OverlayService : Service() {
         // Status bar enabled/disabled
         @Volatile
         var statusBarEnabled = false
+        
+        // Status bar items visibility
+        @Volatile
+        var showBattery = true
+        @Volatile
+        var showWifi = true
+        @Volatile
+        var showBluetooth = true
+        @Volatile
+        var showVolume = true
+        @Volatile
+        var showTime = true
 
         // Instance du service pour pouvoir mettre à jour le bouton
         @Volatile
@@ -60,6 +72,15 @@ class OverlayService : Service() {
 
         fun updateStatusBarEnabled(enabled: Boolean) {
             statusBarEnabled = enabled
+            instance?.recreateStatusBar()
+        }
+
+        fun updateStatusBarItems(battery: Boolean, wifi: Boolean, bluetooth: Boolean, volume: Boolean, time: Boolean) {
+            showBattery = battery
+            showWifi = wifi
+            showBluetooth = bluetooth
+            showVolume = volume
+            showTime = time
             instance?.recreateStatusBar()
         }
     }
@@ -111,6 +132,20 @@ class OverlayService : Service() {
             }
         }
     }
+    
+    // BroadcastReceiver pour détecter les changements de batterie en temps réel
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_BATTERY_CHANGED,
+                Intent.ACTION_POWER_CONNECTED,
+                Intent.ACTION_POWER_DISCONNECTED -> {
+                    DebugLog.d("OverlayService", "Battery status changed - updating charging icon")
+                    updateBatteryChargingIcon(intent)
+                }
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -134,6 +169,14 @@ class OverlayService : Service() {
         val volumeFilter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
         registerReceiver(volumeReceiver, volumeFilter)
         
+        // Enregistrer le receiver pour les changements de batterie
+        val batteryFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+        }
+        registerReceiver(batteryReceiver, batteryFilter)
+        
         // Créer l'overlay seulement si la permission est accordée
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
             createOverlay()
@@ -147,11 +190,21 @@ class OverlayService : Service() {
             val prefs = getSharedPreferences("FreeKioskSettings", Context.MODE_PRIVATE)
             buttonOpacity = prefs.getFloat("overlay_button_opacity", 0.0f)
             statusBarEnabled = prefs.getBoolean("status_bar_enabled", false)
-            DebugLog.d("OverlayService", "Loaded settings - opacity: $buttonOpacity, status bar: $statusBarEnabled")
+            showBattery = prefs.getBoolean("status_bar_show_battery", true)
+            showWifi = prefs.getBoolean("status_bar_show_wifi", true)
+            showBluetooth = prefs.getBoolean("status_bar_show_bluetooth", true)
+            showVolume = prefs.getBoolean("status_bar_show_volume", true)
+            showTime = prefs.getBoolean("status_bar_show_time", true)
+            DebugLog.d("OverlayService", "Loaded settings - opacity: $buttonOpacity, status bar: $statusBarEnabled, items: B:$showBattery W:$showWifi BT:$showBluetooth V:$showVolume T:$showTime")
         } catch (e: Exception) {
             DebugLog.errorProduction("OverlayService", "Failed to load settings: ${e.message}")
             buttonOpacity = 0.0f
             statusBarEnabled = false
+            showBattery = true
+            showWifi = true
+            showBluetooth = true
+            showVolume = true
+            showTime = true
         }
     }
 
@@ -300,10 +353,10 @@ class OverlayService : Service() {
         try {
             // Convertir dp en pixels
             val density = resources.displayMetrics.density
-            val heightPx = (40 * density).toInt() // 40dp de hauteur
-            val paddingPx = (12 * density).toInt()
-            val textSizePx = 13f
-            val iconSizePx = (18 * density).toInt()
+            val heightPx = (28 * density).toInt() // 28dp de hauteur (réduit pour ressembler à une status bar standard)
+            val paddingPx = (8 * density).toInt() // Padding réduit
+            val textSizePx = 12f // Texte légèrement plus petit
+            val iconSizePx = (16 * density).toInt() // Icônes légèrement plus petites
 
             // Créer le LinearLayout horizontal pour la barre d'état
             val statusLayout = LinearLayout(this).apply {
@@ -346,12 +399,21 @@ class OverlayService : Service() {
                 return Pair(container, textView)
             }
 
-            // Batterie (icône + pourcentage + icône éclair si en charge)
+            // Batterie (éclair si en charge + icône + pourcentage)
             val batteryContainer = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, 0, paddingPx, 0)
             }
+            // Éclair de charge - ajouté EN PREMIER (à gauche de l'icône)
+            batteryChargingIcon = android.widget.ImageView(this).apply {
+                setImageResource(resources.getIdentifier("ic_charging", "drawable", packageName))
+                layoutParams = LinearLayout.LayoutParams((iconSizePx * 0.8).toInt(), (iconSizePx * 0.8).toInt()).apply {
+                    setMargins(0, 0, 0, 0) // Collé
+                }
+                visibility = View.GONE // Caché par défaut
+            }
+            batteryContainer.addView(batteryChargingIcon)
             val batteryIcon = android.widget.ImageView(this).apply {
                 setImageResource(resources.getIdentifier("ic_battery", "drawable", packageName))
                 layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx)
@@ -363,15 +425,11 @@ class OverlayService : Service() {
                 textStyle(this)
             }
             batteryContainer.addView(batteryText)
-            batteryChargingIcon = android.widget.ImageView(this).apply {
-                setImageResource(resources.getIdentifier("ic_charging", "drawable", packageName))
-                layoutParams = LinearLayout.LayoutParams((iconSizePx * 0.8).toInt(), (iconSizePx * 0.8).toInt()).apply {
-                    setMargins(2, 0, 0, 0) // Marge minimale pour coller au texte
-                }
-                visibility = View.GONE // Caché par défaut
+            
+            // Ajouter la batterie seulement si activée
+            if (showBattery) {
+                statusLayout.addView(batteryContainer)
             }
-            batteryContainer.addView(batteryChargingIcon)
-            statusLayout.addView(batteryContainer)
 
             // Wi-Fi (icône + statut icône)
             val wifiContainer = LinearLayout(this).apply {
@@ -392,7 +450,11 @@ class OverlayService : Service() {
                 }
             }
             wifiContainer.addView(wifiStatusIcon)
-            statusLayout.addView(wifiContainer)
+            
+            // Ajouter le WiFi seulement si activé
+            if (showWifi) {
+                statusLayout.addView(wifiContainer)
+            }
 
             // Bluetooth (icône + statut icône)
             val bluetoothContainer = LinearLayout(this).apply {
@@ -413,7 +475,11 @@ class OverlayService : Service() {
                 }
             }
             bluetoothContainer.addView(bluetoothStatusIcon)
-            statusLayout.addView(bluetoothContainer)
+            
+            // Ajouter le Bluetooth seulement si activé
+            if (showBluetooth) {
+                statusLayout.addView(bluetoothContainer)
+            }
 
             // Volume (with dynamic icon)
             val volumeIconRes = resources.getIdentifier("ic_volume_medium", "drawable", packageName)
@@ -433,21 +499,34 @@ class OverlayService : Service() {
                 textStyle(this)
             }
             volumeContainer.addView(volumeText)
-            statusLayout.addView(volumeContainer)
 
-            // Spacer pour pousser l'heure à droite
-            val spacer = View(this)
-            statusLayout.addView(spacer, LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                1f
-            ))
+            // Spacer pour pousser l'heure à droite (seulement si on a des items à gauche OU à droite)
+            val hasLeftItems = showBattery || showWifi || showBluetooth
+            val hasRightItems = showVolume || showTime
+            
+            if (hasLeftItems && hasRightItems) {
+                val spacer = View(this)
+                statusLayout.addView(spacer, LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    1f
+                ))
+            }
+            
+            // Ajouter le volume seulement si activé
+            if (showVolume) {
+                statusLayout.addView(volumeContainer)
+            }
 
             // Heure (avec icône)
             val timeIcon = resources.getIdentifier("ic_time", "drawable", packageName)
             val (timeContainer, timeTextView) = createStatusItem(timeIcon, "--:--")
             timeText = timeTextView
-            statusLayout.addView(timeContainer)
+            
+            // Ajouter l'heure seulement si activée
+            if (showTime) {
+                statusLayout.addView(timeContainer)
+            }
 
             statusBarView = statusLayout
 
@@ -465,7 +544,8 @@ class OverlayService : Service() {
                 layoutType,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT
             )
 
@@ -474,7 +554,7 @@ class OverlayService : Service() {
             params.y = 0
 
             windowManager?.addView(statusBarView, params)
-            DebugLog.d("OverlayService", "Status bar created successfully")
+            DebugLog.d("OverlayService", "Status bar created successfully at top of screen")
 
             // Première mise à jour immédiate
             updateStatusBar()
@@ -605,6 +685,32 @@ class OverlayService : Service() {
 
         } catch (e: Exception) {
             DebugLog.errorProduction("OverlayService", "Failed to update status bar: ${e.message}")
+        }
+    }
+    
+    // Méthode dédiée pour mettre à jour uniquement l'icône de charge en temps réel
+    private fun updateBatteryChargingIcon(intent: Intent?) {
+        try {
+            val batteryStatus = intent ?: registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            if (batteryStatus != null) {
+                val status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                                status == BatteryManager.BATTERY_STATUS_FULL
+
+                batteryChargingIcon?.visibility = if (isCharging) View.VISIBLE else View.GONE
+                
+                // Mettre à jour aussi le pourcentage de batterie
+                val level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                if (level >= 0 && scale > 0) {
+                    val batteryPct = (level * 100 / scale.toFloat()).toInt()
+                    batteryText?.text = "$batteryPct%"
+                }
+                
+                DebugLog.d("OverlayService", "Battery charging icon updated: isCharging=$isCharging")
+            }
+        } catch (e: Exception) {
+            DebugLog.errorProduction("OverlayService", "Failed to update battery charging icon: ${e.message}")
         }
     }
 
@@ -760,6 +866,13 @@ class OverlayService : Service() {
             // Désenregistrer le volume receiver
             try {
                 unregisterReceiver(volumeReceiver)
+            } catch (e: Exception) {
+                // Ignore si déjà désenregistré
+            }
+            
+            // Désenregistrer le battery receiver
+            try {
+                unregisterReceiver(batteryReceiver)
             } catch (e: Exception) {
                 // Ignore si déjà désenregistré
             }

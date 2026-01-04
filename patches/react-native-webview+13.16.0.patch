@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
-index 0287e1c..1d96a33 100644
+index 0287e1c..01c6a83 100644
 --- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
 +++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
 @@ -1,9 +1,11 @@
@@ -23,7 +23,15 @@ index 0287e1c..1d96a33 100644
  
  import androidx.annotation.Nullable;
  import androidx.annotation.RequiresApi;
-@@ -35,12 +39,16 @@ import com.reactnativecommunity.webview.events.TopShouldStartLoadWithRequestEven
+@@ -25,6 +29,7 @@ import com.facebook.react.bridge.ReadableArray;
+ import com.facebook.react.bridge.WritableMap;
+ import com.facebook.react.uimanager.ThemedReactContext;
+ import com.facebook.react.uimanager.UIManagerHelper;
++import com.reactnativecommunity.webview.BuildConfig;
+ import com.reactnativecommunity.webview.events.SubResourceErrorEvent;
+ import com.reactnativecommunity.webview.events.TopHttpErrorEvent;
+ import com.reactnativecommunity.webview.events.TopLoadingErrorEvent;
+@@ -35,12 +40,16 @@ import com.reactnativecommunity.webview.events.TopShouldStartLoadWithRequestEven
  import android.webkit.CookieManager;
  import android.webkit.CookieSyncManager;
  
@@ -40,7 +48,7 @@ index 0287e1c..1d96a33 100644
      protected boolean mLastLoadFailed = false;
      protected RNCWebView.ProgressChangedFilter progressChangedFilter = null;
      protected @Nullable RNCBasicAuthCredential basicAuthCredential = null;
-@@ -157,23 +165,15 @@ public class RNCWebViewClient extends WebViewClient {
+@@ -157,23 +166,15 @@ public class RNCWebViewClient extends WebViewClient {
  
      @Override
      public void onReceivedSslError(final WebView webView, final SslErrorHandler handler, final SslError error) {
@@ -66,7 +74,7 @@ index 0287e1c..1d96a33 100644
          switch (code) {
              case SslError.SSL_DATE_INVALID:
                  description = "The date of the certificate is invalid";
-@@ -200,24 +200,182 @@ public class RNCWebViewClient extends WebViewClient {
+@@ -200,26 +201,228 @@ public class RNCWebViewClient extends WebViewClient {
  
          description = descriptionPrefix + description;
  
@@ -87,7 +95,9 @@ index 0287e1c..1d96a33 100644
 +            code == SslError.SSL_UNTRUSTED &&
 +            topWindowUrl != null && topWindowUrl.equalsIgnoreCase(failingUrl)) {
 +            // Certificate already trusted by user and not expired
-+            Log.i(TAG, "Using previously accepted certificate: " + failingUrl);
++            if (BuildConfig.DEBUG) {
++                Log.i(TAG, "Using previously accepted certificate: " + failingUrl);
++            }
 +            handler.proceed();
 +            return;
 +        }
@@ -97,31 +107,41 @@ index 0287e1c..1d96a33 100644
 +        if (code == SslError.SSL_UNTRUSTED && topWindowUrl != null && topWindowUrl.equalsIgnoreCase(failingUrl)) {
 +            // Show user consent dialog
 +            android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(webView.getContext());
-+            builder.setTitle("⚠️ Security Warning");
++            builder.setTitle("SSL Certificate Warning");
 +
 +            // Extract certificate info for display
 +            String certIssuer = error.getCertificate().getIssuedBy().getDName();
 +            String certSubject = error.getCertificate().getIssuedTo().getDName();
-+            String fingerprintShort = certFingerprint.length() > 16 ?
-+                certFingerprint.substring(0, 16) + "..." : certFingerprint;
 +
-+            builder.setMessage("This server's SSL certificate is not trusted.\n\n" +
-+                    "Subject: " + certSubject + "\n" +
-+                    "Issuer: " + certIssuer + "\n" +
-+                    "Fingerprint: " + fingerprintShort + "\n" +
++            // Format fingerprint for better readability (XX:XX:XX format)
++            String fingerprintFormatted = formatFingerprint(certFingerprint);
++
++            builder.setMessage("SECURITY WARNING: This server uses a self-signed certificate.\n\n" +
++                    "Certificate Details:\n" +
++                    "-------------------\n" +
++                    "Subject: " + certSubject + "\n\n" +
++                    "Issuer: " + certIssuer + "\n\n" +
++                    "SHA-256 Fingerprint:\n" + fingerprintFormatted + "\n\n" +
 +                    "URL: " + failingUrl + "\n\n" +
-+                    "Only proceed if you trust this server.\n\n" +
-+                    "The certificate will be remembered for 1 year.");
++                    "WARNING: Only proceed if you:\n" +
++                    "- Know and trust this server\n" +
++                    "- Have verified the fingerprint\n" +
++                    "- Understand the security risks\n\n" +
++                    "This certificate will be trusted for 1 year.");
 +
 +            builder.setPositiveButton("Proceed & Remember", (dialog, which) -> {
-+                Log.i(TAG, "User accepted SSL certificate for: " + failingUrl);
++                if (BuildConfig.DEBUG) {
++                    Log.i(TAG, "User accepted SSL certificate for: " + failingUrl + " (fingerprint: " + certFingerprint + ")");
++                }
 +                // Save the certificate as accepted with URL and expiration
 +                saveCertificateAcceptance(webView.getContext(), certFingerprint, failingUrl);
 +                handler.proceed();
 +            });
 +
 +            builder.setNegativeButton("Cancel", (dialog, which) -> {
-+                Log.w(TAG, "User rejected SSL certificate for: " + failingUrl);
++                if (BuildConfig.DEBUG) {
++                    Log.w(TAG, "User rejected SSL certificate for: " + failingUrl);
++                }
 +                handler.cancel();
 +            });
 +
@@ -152,9 +172,9 @@ index 0287e1c..1d96a33 100644
 +            code,
 +            description,
 +            failingUrl
-+        );
-+    }
-+
+         );
+     }
+ 
 +    // ✅ IMPROVED: Helper methods to manage certificate acceptance with SHA-256 and expiration
 +
 +    /**
@@ -183,13 +203,39 @@ index 0287e1c..1d96a33 100644
 +                return hexString.toString();
 +            }
 +        } catch (Exception e) {
-+            Log.e(TAG, "Error computing SHA-256 fingerprint, falling back to issuer+subject", e);
++            if (BuildConfig.DEBUG) {
++                Log.e(TAG, "Error computing SHA-256 fingerprint, falling back to issuer+subject", e);
++            }
 +        }
 +
 +        // Fallback: use issuer + subject (less secure but better than nothing)
 +        String issuer = cert.getIssuedBy().getDName();
 +        String subject = cert.getIssuedTo().getDName();
 +        return issuer + "|" + subject;
++    }
++
++    /**
++     * Format fingerprint in XX:XX:XX:... format for better readability
++     */
++    private String formatFingerprint(String fingerprint) {
++        if (fingerprint == null || fingerprint.length() < 2) {
++            return fingerprint;
++        }
++        
++        // Check if it's a hex string (SHA-256 = 64 chars)
++        if (!fingerprint.matches("^[0-9a-fA-F]+$")) {
++            return fingerprint; // Not hex, return as-is (fallback format)
++        }
++
++        // Split into pairs and join with colons
++        StringBuilder formatted = new StringBuilder();
++        for (int i = 0; i < fingerprint.length(); i += 2) {
++            if (i > 0) {
++                formatted.append(":");
++            }
++            formatted.append(fingerprint.substring(i, Math.min(i + 2, fingerprint.length())));
++        }
++        return formatted.toString().toUpperCase();
 +    }
 +
 +    /**
@@ -214,7 +260,9 @@ index 0287e1c..1d96a33 100644
 +
 +        if (currentTime > expiryTime) {
 +            // Certificate acceptance has expired - remove it
-+            Log.i(TAG, "Certificate acceptance expired for: " + url);
++            if (BuildConfig.DEBUG) {
++                Log.i(TAG, "Certificate acceptance expired for: " + url);
++            }
 +            prefs.edit()
 +                .remove("cert_" + fingerprint)
 +                .remove("cert_expiry_" + fingerprint)
@@ -244,7 +292,9 @@ index 0287e1c..1d96a33 100644
 +            .putString("cert_url_" + fingerprint, url)
 +            .apply();
 +
-+        Log.i(TAG, "Certificate saved as accepted: " + fingerprint + " for URL: " + url + " (expires in 1 year)");
++        if (BuildConfig.DEBUG) {
++            Log.i(TAG, "Certificate saved as accepted: " + fingerprint + " for URL: " + url + " (expires in 1 year)");
++        }
 +    }
 +
 +    /**
@@ -255,13 +305,17 @@ index 0287e1c..1d96a33 100644
 +        SharedPreferences prefs = context.getSharedPreferences(
 +            "freekiosk_ssl_certs",
 +            Context.MODE_PRIVATE
-         );
++        );
 +        prefs.edit().clear().apply();
-+        Log.i(TAG, "All accepted certificates cleared");
-     }
- 
++        if (BuildConfig.DEBUG) {
++            Log.i(TAG, "All accepted certificates cleared");
++        }
++    }
++
      public void onReceivedSubResourceSslError(
-@@ -314,8 +472,6 @@ public class RNCWebViewClient extends WebViewClient {
+       WebView webView,
+       int errorCode,
+@@ -314,8 +517,6 @@ public class RNCWebViewClient extends WebViewClient {
      protected WritableMap createWebViewEvent(WebView webView, String url) {
          WritableMap event = Arguments.createMap();
          event.putDouble("target", RNCWebViewWrapper.getReactTagFromWebView(webView));

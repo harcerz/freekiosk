@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ***
 
 
+## [1.1.4] - 2025-12-23
+
+
+### Added
+- 🔄 **In-App Direct Update for Device Owner**: Update FreeKiosk directly from within the app when in Device Owner mode
+- 🎨 **Status Bar Item Selection**: New settings to show/hide individual items (Home button, Time, Battery, WiFi, Bluetooth, Sound) in the status bar
+- 🧪 **Test Mode Options for External App**: Three options available
+  - **Test Mode**: Enable back button to return to FreeKiosk (default for safety)
+  - **Immediate Return**: 5-tap overlay button returns immediately to FreeKiosk
+  - **Delayed Return**: 5-tap overlay button with confirmation delay before returning
+
+
+### Fixed
+- 🐛 **Status Bar Position in External App Mode**: Status bar now properly sticks to the top of the screen
+- 🐛 **Clock Visibility**: Fixed issue with time display not showing correctly
+
+
+***
+
+
 ## [1.1.3] - 2025-12-21
 
 

@@ -11,7 +11,8 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/Version-1.1.3-blue.svg" alt="Version 1.1.3">
+    <img src="https://img.shields.io/badge/Version-1.1.4-blue.svg" alt="Version 1.1.4">
+    <a href="https://github.com/rushb-fr/freekiosk/releases"><img src="https://img.shields.io/github/downloads/rushb-fr/freekiosk/total.svg" alt="Downloads"></a>
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
     <img src="https://img.shields.io/badge/Device%20Owner-Supported-brightgreen" alt="Device Owner">
@@ -217,7 +218,14 @@ Done! Your tablet is now in kiosk mode.
 
 ## 🗺️ Roadmap
 
-### ✅ v1.1.3 (Current - Dec 2025)
+### ✅ v1.1.4 (Current - Dec 2025)
+- 🔄 **In-App Direct Update**: Update FreeKiosk directly from within the app (Device Owner mode)
+- 🎨 **Status Bar Item Selection**: Show/hide individual items (Home, Time, Battery, WiFi, Bluetooth, Sound)
+- 🧪 **Test Mode Options**: Three test modes for External App (Test Mode, Immediate Return, Delayed Return)
+- 🐛 **Status Bar Position**: Fixed status bar now properly sticks to the top in External App mode
+- 🐛 **Clock Visibility**: Fixed time display issue
+
+### ✅ v1.1.3 (Dec 2025)
 - ⌨️ **Keyboard Mode**: Default, Force Numeric, or Smart Detection
 - 📊 **Status Bar in External Mode**: Choose to display on external app overlay and/or return screen
 - 🐛 **Status Bar System**: Debug and stability fixes

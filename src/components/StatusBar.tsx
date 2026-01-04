@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, NativeModules } from 'react-native';
+import { StorageService } from '../utils/storage';
 
 const { SystemInfoModule } = NativeModules;
 
@@ -20,7 +21,21 @@ interface SystemInfo {
   };
 }
 
-const StatusBar: React.FC = () => {
+interface StatusBarProps {
+  showBattery?: boolean;
+  showWifi?: boolean;
+  showBluetooth?: boolean;
+  showVolume?: boolean;
+  showTime?: boolean;
+}
+
+const StatusBar: React.FC<StatusBarProps> = ({
+  showBattery = true,
+  showWifi = true,
+  showBluetooth = true,
+  showVolume = true,
+  showTime = true,
+}) => {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [currentTime, setCurrentTime] = useState<string>('');
 
@@ -71,33 +86,49 @@ const StatusBar: React.FC = () => {
   const bluetoothDevices = systemInfo.bluetooth?.connectedDevices ?? 0;
   const audioVolume = systemInfo.audio?.volume ?? 0;
 
-  return (
-    <View style={styles.container}>
-      {/* Battery */}
-      <View style={styles.item}>
+  // Organize items: left side and right side to avoid center (camera)
+  const leftItems = [];
+  const rightItems = [];
+
+  // Battery - left side
+  if (showBattery) {
+    leftItems.push(
+      <View key="battery" style={styles.item}>
+        {isCharging && <Text style={styles.chargingLeft}>⚡</Text>}
         <Text style={styles.icon}>🔋</Text>
         <Text style={styles.text}>{batteryLevel}%</Text>
-        {isCharging && <Text style={styles.charging}>⚡</Text>}
       </View>
+    );
+  }
 
-      {/* WiFi */}
-      <View style={styles.item}>
+  // WiFi - left side
+  if (showWifi) {
+    leftItems.push(
+      <View key="wifi" style={styles.item}>
         <Text style={styles.icon}>📶</Text>
         <Text style={wifiConnected ? styles.statusConnected : styles.statusDisconnected}>
           {wifiConnected ? '✓' : '✗'}
         </Text>
       </View>
+    );
+  }
 
-      {/* Bluetooth */}
-      <View style={styles.item}>
+  // Bluetooth - left side
+  if (showBluetooth) {
+    leftItems.push(
+      <View key="bluetooth" style={styles.item}>
         <Text style={styles.icon}>🔵</Text>
         <Text style={(bluetoothEnabled && bluetoothDevices > 0) ? styles.statusConnected : styles.statusDisconnected}>
           {(bluetoothEnabled && bluetoothDevices > 0) ? '✓' : '✗'}
         </Text>
       </View>
+    );
+  }
 
-      {/* Volume */}
-      <View style={styles.item}>
+  // Volume - right side
+  if (showVolume) {
+    rightItems.push(
+      <View key="volume" style={styles.item}>
         <Text style={styles.icon}>
           {audioVolume === 0 ? '🔇' :
            audioVolume <= 33 ? '🔉' :
@@ -105,14 +136,32 @@ const StatusBar: React.FC = () => {
         </Text>
         <Text style={styles.text}>{audioVolume}%</Text>
       </View>
+    );
+  }
 
-      {/* Spacer */}
-      <View style={styles.spacer} />
-
-      {/* Time */}
-      <View style={styles.item}>
+  // Time - right side
+  if (showTime) {
+    rightItems.push(
+      <View key="time" style={styles.item}>
         <Text style={styles.icon}>🕐</Text>
         <Text style={styles.text}>{currentTime}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Left side items */}
+      <View style={styles.leftSide}>
+        {leftItems}
+      </View>
+      
+      {/* Spacer to avoid center (camera area) */}
+      <View style={styles.spacer} />
+      
+      {/* Right side items */}
+      <View style={styles.rightSide}>
+        {rightItems}
       </View>
     </View>
   );
@@ -120,37 +169,56 @@ const StatusBar: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    height: 40,
+    height: 28,
     backgroundColor: 'rgba(0, 0, 0, 0.88)',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
+  },
+  leftSide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rightSide: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 8,
   },
   icon: {
-    fontSize: 16,
-    marginRight: 4,
+    fontSize: 14,
+    marginRight: 3,
+  },
+  iconMaterial: {
+    fontSize: 14,
+    marginRight: 3,
+    color: '#FFFFFF',
+    fontWeight: '500',
   },
   text: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
+    minWidth: 30,
   },
   charging: {
-    fontSize: 12,
-    marginLeft: 2,
+    fontSize: 11,
+    marginLeft: 0,
+  },
+  chargingLeft: {
+    fontSize: 11,
+    marginRight: 0,
   },
   statusConnected: {
     color: '#4CAF50',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
   },
   statusDisconnected: {
     color: '#F44336',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
   },
   spacer: {

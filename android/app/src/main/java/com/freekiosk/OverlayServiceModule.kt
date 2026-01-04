@@ -128,4 +128,29 @@ class OverlayServiceModule(reactContext: ReactApplicationContext) :
             promise.reject("ERROR", "Failed to get status bar enabled: ${e.message}")
         }
     }
+
+    @ReactMethod
+    fun setStatusBarItems(showBattery: Boolean, showWifi: Boolean, showBluetooth: Boolean, showVolume: Boolean, showTime: Boolean, promise: Promise) {
+        try {
+            // Sauvegarder dans SharedPreferences
+            val prefs = reactApplicationContext.getSharedPreferences("FreeKioskSettings", android.content.Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                putBoolean("status_bar_show_battery", showBattery)
+                putBoolean("status_bar_show_wifi", showWifi)
+                putBoolean("status_bar_show_bluetooth", showBluetooth)
+                putBoolean("status_bar_show_volume", showVolume)
+                putBoolean("status_bar_show_time", showTime)
+                apply()
+            }
+
+            // Mettre à jour la status bar en temps réel
+            OverlayService.updateStatusBarItems(showBattery, showWifi, showBluetooth, showVolume, showTime)
+
+            DebugLog.d("OverlayServiceModule", "Set status bar items - Battery: $showBattery, WiFi: $showWifi, BT: $showBluetooth, Vol: $showVolume, Time: $showTime")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            DebugLog.errorProduction("OverlayServiceModule", "Error setting status bar items: ${e.message}")
+            promise.reject("ERROR", "Failed to set status bar items: ${e.message}")
+        }
+    }
 }

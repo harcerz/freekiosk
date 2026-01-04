@@ -31,6 +31,11 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const [statusBarEnabled, setStatusBarEnabled] = useState(false);
   const [statusBarOnOverlay, setStatusBarOnOverlay] = useState(true);
   const [statusBarOnReturn, setStatusBarOnReturn] = useState(true);
+  const [showBattery, setShowBattery] = useState(true);
+  const [showWifi, setShowWifi] = useState(true);
+  const [showBluetooth, setShowBluetooth] = useState(true);
+  const [showVolume, setShowVolume] = useState(true);
+  const [showTime, setShowTime] = useState(true);
   const timerRef = useRef<any>(null);
 
   // External app states
@@ -40,12 +45,16 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const [appCrashCount, setAppCrashCount] = useState<number>(0);
   const relaunchTimerRef = useRef<any>(null);
   const [isAppLaunched, setIsAppLaunched] = useState<boolean>(false);
-  const [externalAppTestMode, setExternalAppTestMode] = useState<boolean>(true);
+  const [backButtonMode, setBackButtonMode] = useState<string>('test');
+  const [backButtonTimerDelay, setBackButtonTimerDelay] = useState<number>(10);
+  const [countdownActive, setCountdownActive] = useState<boolean>(false);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
+  const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [keyboardMode, setKeyboardMode] = useState<string>('default');
   const appStateRef = useRef(AppState.currentState);
-  const appLaunchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const appLaunchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tapCountRef = useRef<number>(0);
-  const tapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // AppState listener - détecte quand l'app revient au premier plan
   useEffect(() => {
@@ -64,15 +73,28 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
             return;
           }
           
-          // 2. Ensuite vérifier le mode test (back button depuis app externe)
+          // 2. Ensuite vérifier le mode back button
           // IMPORTANT: Lire directement depuis storage pour avoir la valeur actuelle
-          const currentTestMode = await StorageService.getExternalAppTestMode();
-          if (currentTestMode) {
+          const currentBackButtonMode = await StorageService.getBackButtonMode();
+          
+          if (currentBackButtonMode === 'test') {
+            // Mode test: pas de relance auto
             setIsAppLaunched(false);
             appStateRef.current = nextAppState;
             return;
           }
           
+          if (currentBackButtonMode === 'timer') {
+            // Mode timer: afficher countdown puis relancer
+            const timerDelay = await StorageService.getBackButtonTimerDelay();
+            setCountdownSeconds(timerDelay);
+            setCountdownActive(true);
+            setIsAppLaunched(false);
+            appStateRef.current = nextAppState;
+            return;
+          }
+          
+          // Mode immediate: relancer directement
           // 3. Sinon, relancer automatiquement l'app externe
           if (displayMode === 'external_app' && externalAppPackage && autoRelaunchApp) {
             // Petit délai pour laisser l'UI se stabiliser
@@ -95,6 +117,27 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       }
     };
   }, [displayMode, externalAppPackage, autoRelaunchApp]);
+
+  // Countdown timer effect (transparent - no UI)
+  useEffect(() => {
+    if (countdownActive && countdownSeconds > 0) {
+      countdownTimerRef.current = setTimeout(() => {
+        setCountdownSeconds(prev => prev - 1);
+      }, 1000);
+    } else if (countdownActive && countdownSeconds === 0) {
+      // Countdown terminé, relancer l'app
+      setCountdownActive(false);
+      if (externalAppPackage) {
+        launchExternalApp(externalAppPackage);
+      }
+    }
+
+    return () => {
+      if (countdownTimerRef.current) {
+        clearTimeout(countdownTimerRef.current);
+      }
+    };
+  }, [countdownActive, countdownSeconds, externalAppPackage]);
 
   useEffect(() => {
     const unsubscribeFocus = navigation.addListener('focus', () => {
@@ -182,6 +225,11 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedStatusBarEnabled = await StorageService.getStatusBarEnabled();
       const savedStatusBarOnOverlay = await StorageService.getStatusBarOnOverlay();
       const savedStatusBarOnReturn = await StorageService.getStatusBarOnReturn();
+      const savedShowBattery = await StorageService.getStatusBarShowBattery();
+      const savedShowWifi = await StorageService.getStatusBarShowWifi();
+      const savedShowBluetooth = await StorageService.getStatusBarShowBluetooth();
+      const savedShowVolume = await StorageService.getStatusBarShowVolume();
+      const savedShowTime = await StorageService.getStatusBarShowTime();
 
       if (savedUrl) setUrl(savedUrl);
       setAutoReload(savedAutoReload);
@@ -194,25 +242,32 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       setStatusBarEnabled(savedStatusBarEnabled ?? false);
       setStatusBarOnOverlay(savedStatusBarOnOverlay ?? true);
       setStatusBarOnReturn(savedStatusBarOnReturn ?? true);
+      setShowBattery(savedShowBattery ?? true);
+      setShowWifi(savedShowWifi ?? true);
+      setShowBluetooth(savedShowBluetooth ?? true);
+      setShowVolume(savedShowVolume ?? true);
+      setShowTime(savedShowTime ?? true);
 
       // Load external app settings
       const savedDisplayMode = await StorageService.getDisplayMode();
       const savedExternalAppPackage = await StorageService.getExternalAppPackage();
       const savedAutoRelaunchApp = await StorageService.getAutoRelaunchApp();
 
-      const savedExternalAppTestMode = await StorageService.getExternalAppTestMode();
+      const savedBackButtonMode = await StorageService.getBackButtonMode();
+      const savedBackButtonTimerDelay = await StorageService.getBackButtonTimerDelay();
       const savedKeyboardMode = await StorageService.getKeyboardMode();
 
       setDisplayMode(savedDisplayMode);
       setExternalAppPackage(savedExternalAppPackage);
       setAutoRelaunchApp(savedAutoRelaunchApp);
-      setExternalAppTestMode(savedExternalAppTestMode);
+      setBackButtonMode(savedBackButtonMode);
+      setBackButtonTimerDelay(savedBackButtonTimerDelay);
       setKeyboardMode(savedKeyboardMode);
 
       if (savedKioskEnabled) {
         try {
           // Pass external app package so it gets added to whitelist
-          const packageToWhitelist = savedDisplayMode === 'external_app' ? savedExternalAppPackage : null;
+          const packageToWhitelist = savedDisplayMode === 'external_app' && savedExternalAppPackage ? savedExternalAppPackage : undefined;
           await KioskModule.startLockTask(packageToWhitelist);
         } catch {
           // Silent fail
@@ -347,15 +402,28 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     <View style={styles.container}>
       {displayMode === 'webview' ? (
         <>
-          {statusBarEnabled && <StatusBar />}
+          {statusBarEnabled && (
+            <StatusBar
+              showBattery={showBattery}
+              showWifi={showWifi}
+              showBluetooth={showBluetooth}
+              showVolume={showVolume}
+              showTime={showTime}
+            />
+          )}
           <WebViewComponent url={url} autoReload={autoReload} keyboardMode={keyboardMode} onUserInteraction={onUserInteraction} />
         </>
       ) : (
         <ExternalAppOverlay
           externalAppPackage={externalAppPackage}
           isAppLaunched={isAppLaunched}
-          testModeEnabled={externalAppTestMode}
+          backButtonMode={backButtonMode}
           showStatusBar={statusBarEnabled && statusBarOnReturn}
+          showBattery={showBattery}
+          showWifi={showWifi}
+          showBluetooth={showBluetooth}
+          showVolume={showVolume}
+          showTime={showTime}
           onReturnToApp={handleReturnToExternalApp}
           onGoToSettings={handleGoToSettings}
         />

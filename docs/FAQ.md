@@ -33,7 +33,7 @@
 **A:** Yes, for Device Owner activation. This is an Android limitation, not FreeKiosk's.
 
 ### Q: Can I remove Device Owner?
-**A:** Yes! Use "Exit Kiosk Mode" button in FreeKiosk settings, or via ADB:
+**A:** Yes! In FreeKiosk settings, use the "⚠️ Remove Device Owner" button (NOT "Exit Kiosk Mode"). Or via ADB:
 adb shell dpm remove-active-admin com.freekiosk/.DeviceAdminReceiver
 
 text
