@@ -13,8 +13,13 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.widget.Toast
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.bridge.Arguments
+import java.security.MessageDigest
+import android.database.sqlite.SQLiteDatabase
+import android.content.ContentValues
+import android.view.KeyEvent
 
 class MainActivity : ReactActivity() {
 
@@ -22,6 +27,10 @@ class MainActivity : ReactActivity() {
     // Flag partagé pour bloquer le relaunch - accessible depuis OverlayService
     @Volatile
     var blockAutoRelaunch = false
+    
+    // Flag to prevent processing the same ADB config intent twice
+    @Volatile
+    var lastProcessedAdbIntent: Long = 0
   }
 
   private lateinit var devicePolicyManager: DevicePolicyManager
@@ -32,6 +41,11 @@ class MainActivity : ReactActivity() {
   private var externalAppPackage: String? = null
   private var isDeviceOwner = false
   private var isVoluntaryReturn = false  // Flag pour éviter double événement
+
+  // Volume key 5-tap detection
+  private var volumeUpTapCount = 0
+  private var volumeUpLastTapTime = 0L
+  private val volumeUpTapTimeout = 2000L // 2 seconds timeout between taps
 
   override fun getMainComponentName(): String = "FreeKiosk"
 
@@ -47,6 +61,11 @@ class MainActivity : ReactActivity() {
     devicePolicyManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     adminComponent = ComponentName(this, DeviceAdminReceiver::class.java)
 
+    // Handle ADB configuration - if config applied, app will restart
+    if (handleAdbConfig(intent)) {
+      return  // Exit - app restarting with new config
+    }
+
     readExternalAppConfig()
     hideSystemUI()
     checkAndStartLockTask()
@@ -57,6 +76,17 @@ class MainActivity : ReactActivity() {
 
   override fun onNewIntent(intent: Intent?) {
     super.onNewIntent(intent)
+    setIntent(intent) // Important: update the intent
+    
+    // Handle ADB config on new intent too (when app is already running)
+    // If returns true, the app will restart and we should not continue
+    if (handleAdbConfig(intent)) {
+      return
+    }
+    
+    // Reload config after ADB changes
+    readExternalAppConfig()
+    
     handleNavigationIntent(intent)
   }
 
@@ -367,6 +397,43 @@ class MainActivity : ReactActivity() {
     }
   }
 
+  override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    // Handle Volume Up key for 5-tap gesture to access settings
+    if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP && event.action == KeyEvent.ACTION_DOWN) {
+      val currentTime = System.currentTimeMillis()
+      
+      // Reset counter if timeout exceeded
+      if (currentTime - volumeUpLastTapTime > volumeUpTapTimeout) {
+        volumeUpTapCount = 0
+      }
+      
+      volumeUpTapCount++
+      volumeUpLastTapTime = currentTime
+      
+      DebugLog.d("MainActivity", "Volume Up tap count: $volumeUpTapCount")
+      
+      if (volumeUpTapCount == 5) {
+        volumeUpTapCount = 0
+        
+        // Set flag to block auto-relaunch
+        blockAutoRelaunch = true
+        DebugLog.d("MainActivity", "5-tap Volume Up detected, navigating to PIN")
+        
+        // Send event to React Native to navigate to PIN screen
+        Handler(Looper.getMainLooper()).postDelayed({
+          sendNavigateToPinEvent()
+        }, 100)
+        
+        return true // Consume the event
+      }
+      
+      // Allow normal volume up behavior (volume increase)
+      return super.dispatchKeyEvent(event)
+    }
+    
+    return super.dispatchKeyEvent(event)
+  }
+
   private fun bringToFrontWithPinNavigation() {
     try {
       val intent = Intent(this, MainActivity::class.java)
@@ -390,6 +457,433 @@ class MainActivity : ReactActivity() {
       DebugLog.d("MainActivity", "External app config: mode=$displayMode, package=$externalAppPackage, isDeviceOwner=$isDeviceOwner")
     } catch (e: Exception) {
       DebugLog.errorProduction("MainActivity", "Error reading external app config: ${e.message}")
+    }
+  }
+
+  // ==================== ADB Configuration ====================
+  
+  /**
+   * Handle ADB intent configuration
+   * Allows setting up FreeKiosk via ADB commands:
+   * 
+   * First setup (no PIN configured):
+   *   adb shell am start -n com.freekiosk/.MainActivity --es lock_package "com.app" --es pin "1234"
+   * 
+   * Modify existing config (PIN required):
+   *   adb shell am start -n com.freekiosk/.MainActivity --es lock_package "com.app" --es pin "1234"
+   * 
+   * Full config with URL:
+   *   adb shell am start -n com.freekiosk/.MainActivity --es url "https://example.com" --es pin "1234"
+   * 
+   * @return true if config was applied and app will restart, false otherwise
+   */
+  private fun handleAdbConfig(intent: Intent?): Boolean {
+    if (intent == null) return false
+    
+    // Check if this is an ADB config intent
+    val lockPackage = intent.getStringExtra("lock_package")
+    val url = intent.getStringExtra("url")
+    val pin = intent.getStringExtra("pin")
+    val configJson = intent.getStringExtra("config") // Full JSON config
+    
+    // Skip if no config parameters
+    if (lockPackage == null && url == null && configJson == null) return false
+    
+    android.util.Log.i("FreeKiosk-ADB", "ADB config received: lock_package=$lockPackage, url=$url, config=${configJson != null}")
+    
+    // Prevent processing the same intent twice (after recreate)
+    val intentHash = ((lockPackage ?: "").hashCode() + (url ?: "").hashCode() + (pin ?: "").hashCode() + System.currentTimeMillis() / 2000).toLong()
+    if (intentHash == lastProcessedAdbIntent) return false
+    lastProcessedAdbIntent = intentHash
+    
+    // Check if device is already configured (has PIN)
+    val isVirginSetup = !hasExistingPin()
+    
+    if (isVirginSetup) {
+      // First setup - PIN is REQUIRED to be set
+      if (pin.isNullOrEmpty()) {
+        android.util.Log.w("FreeKiosk-ADB", "Rejected: PIN required for first setup")
+        showAdbToast("❌ ADB Config rejected: PIN required for first setup")
+        return false
+      }
+      // Save the new PIN (hashed for ADB verification AND in AsyncStorage for UI)
+      saveAdbPinHash(pin)
+      savePinDirectly(pin)
+      
+    } else {
+      // Already configured - verify PIN
+      if (pin.isNullOrEmpty()) {
+        android.util.Log.w("FreeKiosk-ADB", "Rejected: PIN required")
+        showAdbToast("❌ ADB Config rejected: PIN required")
+        return false
+      }
+      
+      if (!verifyAdbPin(pin)) {
+        android.util.Log.w("FreeKiosk-ADB", "Rejected: Invalid PIN")
+        showAdbToast("❌ ADB Config rejected: Invalid PIN")
+        return false
+      }
+    }
+    
+    // PIN verified - Apply configuration directly to AsyncStorage SQLite database
+    // AsyncStorage uses SQLite database "RKStorage" with table "catalystLocalStorage"
+    val db = openAsyncStorageDb()
+    if (db == null) {
+      android.util.Log.e("FreeKiosk-ADB", "Failed to open database")
+      showAdbToast("❌ ADB Config: Database error")
+      return false
+    }
+    
+    try {
+      db.beginTransaction()
+      android.util.Log.i("FreeKiosk-ADB", "Writing to RKStorage database...")
+    
+      // Handle full JSON config
+      if (configJson != null) {
+        try {
+          val config = org.json.JSONObject(configJson)
+          applyJsonConfigToDb(db, config)
+        } catch (e: Exception) {
+          android.util.Log.e("FreeKiosk-ADB", "Invalid JSON: ${e.message}")
+          showAdbToast("❌ ADB Config: Invalid JSON")
+          db.endTransaction()
+          db.close()
+          return false
+      }
+    }
+    
+    // Handle individual parameters (override JSON if both provided)
+    if (lockPackage != null) {
+      // Verify package exists
+      try {
+        packageManager.getPackageInfo(lockPackage, 0)
+        setAsyncStorageValue(db, "@kiosk_external_app_package", lockPackage)
+        setAsyncStorageValue(db, "@kiosk_display_mode", "external_app")
+      } catch (e: Exception) {
+        android.util.Log.w("FreeKiosk-ADB", "Package not found: $lockPackage")
+        showAdbToast("❌ ADB Config: Package not found: $lockPackage")
+        db.endTransaction()
+        db.close()
+        return false
+      }
+    }
+    
+    if (url != null) {
+      setAsyncStorageValue(db, "@kiosk_url", url)
+      setAsyncStorageValue(db, "@kiosk_display_mode", "webview")
+    }
+    
+    // Handle additional options - only set if explicitly provided
+    if (intent.hasExtra("kiosk_enabled")) {
+      val kioskEnabled = intent.getBooleanExtra("kiosk_enabled", false)
+      setAsyncStorageValue(db, "@kiosk_enabled", kioskEnabled.toString())
+    }
+    
+    intent.getStringExtra("auto_launch")?.let {
+      setAsyncStorageValue(db, "@kiosk_auto_launch", it)
+    }
+    
+    intent.getStringExtra("screensaver_enabled")?.let {
+      setAsyncStorageValue(db, "@screensaver_enabled", it)
+    }
+    
+    intent.getStringExtra("auto_relaunch")?.let {
+      setAsyncStorageValue(db, "@kiosk_auto_relaunch_app", it)
+    }
+    
+    intent.getStringExtra("status_bar")?.let {
+      setAsyncStorageValue(db, "@kiosk_status_bar_enabled", it)
+    }
+    
+    intent.getStringExtra("rest_api_enabled")?.let {
+      setAsyncStorageValue(db, "@kiosk_rest_api_enabled", it)
+    }
+    
+    intent.getStringExtra("rest_api_port")?.let {
+      setAsyncStorageValue(db, "@kiosk_rest_api_port", it)
+    }
+    
+    intent.getStringExtra("rest_api_key")?.let {
+      setAsyncStorageValue(db, "@kiosk_rest_api_key", it)
+    }
+    
+    // Commit all changes to database
+    db.setTransactionSuccessful()
+    db.endTransaction()
+    
+    // Force WAL checkpoint to sync to disk BEFORE killing process
+    try {
+      db.rawQuery("PRAGMA wal_checkpoint(FULL)", null).close()
+      val dbFile = getDatabasePath("RKStorage")
+      if (dbFile.exists()) {
+        java.io.RandomAccessFile(dbFile, "rw").use { raf ->
+          raf.fd.sync()
+        }
+      }
+    } catch (e: Exception) {
+      android.util.Log.w("FreeKiosk-ADB", "Database sync failed: ${e.message}")
+    }
+    
+    db.close()
+    
+    } catch (e: Exception) {
+      android.util.Log.e("FreeKiosk-ADB", "Error applying config: ${e.message}")
+      try { db.endTransaction() } catch (ex: Exception) {}
+      try { db.close() } catch (ex: Exception) {}
+      showAdbToast("❌ ADB Config: Error: ${e.message}")
+      return false
+    }
+    
+    // Show success toast
+    val configType = when {
+      lockPackage != null -> "app: $lockPackage"
+      url != null -> "URL: $url"
+      configJson != null -> "full config"
+      else -> "settings"
+    }
+    android.util.Log.i("FreeKiosk-ADB", "Config applied: $configType")
+    showAdbToast("✅ ADB Config applied: $configType")
+    
+    // Restart in a handler to allow database sync to complete
+    Handler(Looper.getMainLooper()).postDelayed({
+      // Create restart intent
+      val restartIntent = packageManager.getLaunchIntentForPackage(packageName)
+      restartIntent?.apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+      }
+      
+      // Auto-start external app if requested
+      if (intent.getBooleanExtra("auto_start", false) && lockPackage != null) {
+        try {
+          val launchIntent = packageManager.getLaunchIntentForPackage(lockPackage)
+          launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          if (launchIntent != null) {
+            startActivity(launchIntent)
+          }
+        } catch (e: Exception) {
+          android.util.Log.e("FreeKiosk-ADB", "Failed to auto-start $lockPackage: ${e.message}")
+        }
+      } else if (restartIntent != null) {
+        startActivity(restartIntent)
+      }
+      
+      // Kill immediately
+      android.os.Process.killProcess(android.os.Process.myPid())
+      System.exit(0)
+    }, 500) // Wait 500ms to ensure database sync
+    
+    return true
+  }
+  
+  /**
+   * Restart the app by killing the process and relaunching
+   * This ensures React Native picks up the new config from SharedPreferences
+   */
+  private fun restartApp() {
+    try {
+      // Create a fresh intent without the ADB config extras
+      val restartIntent = packageManager.getLaunchIntentForPackage(packageName)
+      restartIntent?.apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+      }
+      
+      // Start the new instance
+      if (restartIntent != null) {
+        startActivity(restartIntent)
+        // Kill the current process
+        android.os.Process.killProcess(android.os.Process.myPid())
+      } else {
+        android.util.Log.e("FreeKiosk-ADB", "Failed to get launch intent for restart")
+      }
+    } catch (e: Exception) {
+      android.util.Log.e("FreeKiosk-ADB", "Failed to restart app: ${e.message}")
+    }
+  }
+  
+  /**
+   * Open the AsyncStorage SQLite database (create if not exists)
+   * AsyncStorage uses database name "RKStorage" with table "catalystLocalStorage"
+   */
+  private fun openAsyncStorageDb(): SQLiteDatabase? {
+    return try {
+      val dbPath = getDatabasePath("RKStorage").absolutePath
+      
+      // Create parent directory if it doesn't exist
+      val dbFile = java.io.File(dbPath)
+      dbFile.parentFile?.let { parent ->
+        if (!parent.exists()) {
+          parent.mkdirs()
+        }
+      }
+      
+      // Open or create database
+      val db = SQLiteDatabase.openOrCreateDatabase(dbPath, null)
+      
+      // Ensure the catalystLocalStorage table exists (same schema as AsyncStorage uses)
+      db.execSQL("""
+        CREATE TABLE IF NOT EXISTS catalystLocalStorage (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )
+      """.trimIndent())
+      
+      db
+    } catch (e: Exception) {
+      android.util.Log.e("FreeKiosk-ADB", "Failed to open RKStorage DB: ${e.message}")
+      null
+    }
+  }
+  
+  /**
+   * Set a value in AsyncStorage SQLite database
+   */
+  private fun setAsyncStorageValue(db: SQLiteDatabase, key: String, value: String) {
+    val contentValues = ContentValues().apply {
+      put("key", key)
+      put("value", value)
+    }
+    db.insertWithOnConflict("catalystLocalStorage", null, contentValues, SQLiteDatabase.CONFLICT_REPLACE)
+  }
+
+  /**
+   * Apply full JSON configuration to database
+   */
+  private fun applyJsonConfigToDb(db: SQLiteDatabase, config: org.json.JSONObject) {
+    // Map of JSON keys to AsyncStorage keys
+    val keyMapping = mapOf(
+      "url" to "@kiosk_url",
+      "lock_package" to "@kiosk_external_app_package",
+      "display_mode" to "@kiosk_display_mode",
+      "kiosk_enabled" to "@kiosk_enabled",
+      "auto_launch" to "@kiosk_auto_launch",
+      "auto_relaunch" to "@kiosk_auto_relaunch_app",
+      "screensaver_enabled" to "@screensaver_enabled",
+      "screensaver_delay" to "@screensaver_inactivity_delay",
+      "screensaver_brightness" to "@screensaver_brightness",
+      "status_bar_enabled" to "@kiosk_status_bar_enabled",
+      "status_bar_show_battery" to "@kiosk_status_bar_show_battery",
+      "status_bar_show_wifi" to "@kiosk_status_bar_show_wifi",
+      "status_bar_show_time" to "@kiosk_status_bar_show_time",
+      "rest_api_enabled" to "@kiosk_rest_api_enabled",
+      "rest_api_port" to "@kiosk_rest_api_port",
+      "rest_api_key" to "@kiosk_rest_api_key",
+      "allow_power_button" to "@kiosk_allow_power_button",
+      "back_button_mode" to "@kiosk_back_button_mode",
+      "default_brightness" to "@default_brightness"
+    )
+    
+    for ((jsonKey, storageKey) in keyMapping) {
+      if (config.has(jsonKey)) {
+        val value = config.get(jsonKey)
+        setAsyncStorageValue(db, storageKey, value.toString())
+      }
+    }
+    
+    // Handle lock_package -> also set display_mode
+    if (config.has("lock_package") && !config.has("display_mode")) {
+      setAsyncStorageValue(db, "@kiosk_display_mode", "external_app")
+    }
+  }
+  
+  /**
+   * Check if a PIN is already configured
+   */
+  private fun hasExistingPin(): Boolean {
+    val adbPrefs = getSharedPreferences("FreeKioskAdbConfig", Context.MODE_PRIVATE)
+    return adbPrefs.getString("pin_hash", null) != null
+  }
+  
+  /**
+   * Save PIN hash for ADB verification
+   * Uses SHA-256 with salt for secure storage
+   */
+  private fun saveAdbPinHash(pin: String) {
+    try {
+      val salt = java.util.UUID.randomUUID().toString()
+      val hash = hashPinWithSalt(pin, salt)
+      
+      val prefs = getSharedPreferences("FreeKioskAdbConfig", Context.MODE_PRIVATE)
+      prefs.edit()
+        .putString("pin_hash", hash)
+        .putString("pin_salt", salt)
+        .apply()
+        
+      DebugLog.d("MainActivity", "ADB PIN hash saved")
+    } catch (e: Exception) {
+      DebugLog.errorProduction("MainActivity", "Failed to save ADB PIN hash: ${e.message}")
+    }
+  }
+  
+  /**
+   * Save PIN directly to AsyncStorage database for UI
+   */
+  private fun savePinDirectly(pin: String) {
+    try {
+      val db = openAsyncStorageDb()
+      if (db != null) {
+        db.beginTransaction()
+        setAsyncStorageValue(db, "@kiosk_pin", pin)
+        db.setTransactionSuccessful()
+        db.endTransaction()
+        db.close()
+        android.util.Log.i("FreeKiosk-ADB", "PIN saved to database")
+      }
+    } catch (e: Exception) {
+      android.util.Log.e("FreeKiosk-ADB", "Failed to save PIN: ${e.message}")
+    }
+  }
+  
+  /**
+   * Verify PIN against stored hash
+   */
+  private fun verifyAdbPin(pin: String): Boolean {
+    try {
+      val prefs = getSharedPreferences("FreeKioskAdbConfig", Context.MODE_PRIVATE)
+      val storedHash = prefs.getString("pin_hash", null)
+      val storedSalt = prefs.getString("pin_salt", null)
+      
+      if (storedHash != null && storedSalt != null) {
+        val inputHash = hashPinWithSalt(pin, storedSalt)
+        return inputHash == storedHash
+      }
+      
+      // Fallback: check legacy plaintext PIN
+      val asyncPrefs = getSharedPreferences("RCTAsyncLocalStorage", Context.MODE_PRIVATE)
+      val legacyPin = asyncPrefs.getString("@kiosk_pin", null)
+      if (legacyPin != null) {
+        if (pin == legacyPin) {
+          // Migrate to hashed storage
+          saveAdbPinHash(pin)
+          return true
+        }
+        return false
+      }
+      
+      // No PIN stored, check default (for backward compatibility)
+      return pin == "1234"
+      
+    } catch (e: Exception) {
+      DebugLog.errorProduction("MainActivity", "Failed to verify ADB PIN: ${e.message}")
+      return false
+    }
+  }
+  
+  /**
+   * Hash PIN with salt using SHA-256
+   */
+  private fun hashPinWithSalt(pin: String, salt: String): String {
+    val combined = "$pin:$salt:freekiosk_adb"
+    val digest = MessageDigest.getInstance("SHA-256")
+    val hashBytes = digest.digest(combined.toByteArray(Charsets.UTF_8))
+    return hashBytes.joinToString("") { "%02x".format(it) }
+  }
+  
+  /**
+   * Show toast for ADB feedback
+   */
+  private fun showAdbToast(message: String) {
+    Handler(Looper.getMainLooper()).post {
+      Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
   }
 

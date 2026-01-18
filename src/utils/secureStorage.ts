@@ -1,6 +1,9 @@
 import * as Keychain from 'react-native-keychain';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NativeModules, Platform } from 'react-native';
 import { StorageService } from './storage';
+
+const { KioskModule } = NativeModules;
 
 // Constants
 const PIN_SERVICE = 'freekiosk_pin';
@@ -157,6 +160,17 @@ export async function saveSecurePin(pin: string): Promise<boolean> {
         accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
       }
     );
+
+    // Also save hash for ADB verification (keeps native and RN in sync)
+    if (Platform.OS === 'android' && KioskModule?.saveAdbPinHash) {
+      try {
+        await KioskModule.saveAdbPinHash(pin);
+        console.log('[SecureStorage] ADB PIN hash synced');
+      } catch (e) {
+        console.warn('[SecureStorage] Failed to sync ADB PIN hash:', e);
+        // Non-fatal: ADB config just won't work, but app PIN still works
+      }
+    }
 
     // Reset attempts when new PIN is set
     await resetPinAttempts();
@@ -449,6 +463,16 @@ export async function clearSecurePin(): Promise<void> {
     await Keychain.resetGenericPassword({ service: PIN_SERVICE });
     await resetPinAttempts();
     await clearLegacyPlaintextPin(); // Also clear any plaintext PIN
+    
+    // Also clear ADB PIN hash
+    if (Platform.OS === 'android' && KioskModule?.clearAdbPinHash) {
+      try {
+        await KioskModule.clearAdbPinHash();
+        console.log('[SecureStorage] ADB PIN hash cleared');
+      } catch (e) {
+        console.warn('[SecureStorage] Failed to clear ADB PIN hash:', e);
+      }
+    }
   } catch (error) {
     console.error('[SecureStorage] Error clearing PIN:', error);
   }

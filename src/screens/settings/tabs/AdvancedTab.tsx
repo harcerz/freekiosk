@@ -9,6 +9,7 @@ import {
   SettingsSection,
   SettingsButton,
   SettingsInfoBox,
+  BackupRestoreSection,
 } from '../../../components/settings';
 import { ApiSettingsSection } from '../../../components/ApiSettingsSection';
 import { CertificateInfo } from '../../../utils/CertificateModule';
@@ -36,6 +37,9 @@ interface AdvancedTabProps {
   onExitKioskMode: () => void;
   onRemoveDeviceOwner: () => void;
   kioskEnabled: boolean;
+  
+  // Backup/Restore
+  onRestoreComplete?: () => void;
 }
 
 const AdvancedTab: React.FC<AdvancedTabProps> = ({
@@ -54,6 +58,7 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
   onExitKioskMode,
   onRemoveDeviceOwner,
   kioskEnabled,
+  onRestoreComplete,
 }) => {
   return (
     <View>
@@ -142,6 +147,9 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
       
       {/* REST API - Home Assistant Integration */}
       <ApiSettingsSection />
+
+      {/* Backup & Restore */}
+      <BackupRestoreSection onRestoreComplete={onRestoreComplete} />
 
       {/* Actions */}
       <SettingsSection title="Actions" icon="cog-outline">

@@ -23,6 +23,7 @@ import AppLauncherModule, { AppInfo } from '../utils/AppLauncherModule';
 import OverlayPermissionModule from '../utils/OverlayPermissionModule';
 import LauncherModule from '../utils/LauncherModule';
 import UpdateModule from '../utils/UpdateModule';
+import { BackupRestoreSection } from '../components/settings';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -1686,6 +1687,9 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
         <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.navigate('Kiosk')}>
           <Text style={styles.cancelButtonText}>↩️ Back to Kiosk</Text>
         </TouchableOpacity>
+
+        {/* Backup & Restore Section */}
+        <BackupRestoreSection onRestoreComplete={loadSettings} />
 
         <TouchableOpacity style={styles.resetButton} onPress={handleResetSettings}>
           <Text style={styles.resetButtonText}>🔄 Reset All Settings</Text>

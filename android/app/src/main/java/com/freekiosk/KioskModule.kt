@@ -295,4 +295,89 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
             promise.reject("ERROR", "Failed to send remote key: ${e.message}")
         }
     }
+
+    /**
+     * Save PIN hash for ADB verification
+     * Called when PIN is set via React Native UI to keep ADB config in sync
+     */
+    @ReactMethod
+    fun saveAdbPinHash(pin: String, promise: Promise) {
+        try {
+            val salt = java.util.UUID.randomUUID().toString()
+            val hash = hashPinWithSalt(pin, salt)
+            
+            val prefs = reactApplicationContext.getSharedPreferences("FreeKioskAdbConfig", Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString("pin_hash", hash)
+                .putString("pin_salt", salt)
+                .apply()
+            
+            android.util.Log.d("KioskModule", "ADB PIN hash saved from React Native")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            android.util.Log.e("KioskModule", "Failed to save ADB PIN hash: ${e.message}")
+            promise.reject("ERROR", "Failed to save ADB PIN hash: ${e.message}")
+        }
+    }
+
+    /**
+     * Clear ADB PIN hash (when PIN is cleared in app)
+     */
+    @ReactMethod
+    fun clearAdbPinHash(promise: Promise) {
+        try {
+            val prefs = reactApplicationContext.getSharedPreferences("FreeKioskAdbConfig", Context.MODE_PRIVATE)
+            prefs.edit()
+                .remove("pin_hash")
+                .remove("pin_salt")
+                .apply()
+            
+            android.util.Log.d("KioskModule", "ADB PIN hash cleared")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            android.util.Log.e("KioskModule", "Failed to clear ADB PIN hash: ${e.message}")
+            promise.reject("ERROR", "Failed to clear ADB PIN hash: ${e.message}")
+        }
+    }
+
+    /**
+     * Hash PIN with salt using SHA-256 (same as MainActivity)
+     */
+    private fun hashPinWithSalt(pin: String, salt: String): String {
+        val combined = "$pin:$salt:freekiosk_adb"
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(combined.toByteArray(Charsets.UTF_8))
+        return hashBytes.joinToString("") { "%02x".format(it) }
+    }
+    
+    /**
+     * Save PIN to AsyncStorage for UI display
+     * This is called from native ADB config to make PIN visible in Settings
+     */
+    fun savePinToStorage(pin: String): Boolean {
+        return try {
+            val dbPath = reactApplicationContext.getDatabasePath("RKStorage").absolutePath
+            val db = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(dbPath, null)
+            
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS catalystLocalStorage (
+                  key TEXT PRIMARY KEY,
+                  value TEXT NOT NULL
+                )
+            """.trimIndent())
+            
+            val contentValues = android.content.ContentValues().apply {
+                put("key", "@kiosk_pin")
+                put("value", pin)
+            }
+            db.insertWithOnConflict("catalystLocalStorage", null, contentValues, android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE)
+            db.close()
+            
+            android.util.Log.i("KioskModule", "PIN saved to AsyncStorage for UI")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("KioskModule", "Failed to save PIN to storage: ${e.message}")
+            false
+        }
+    }
 }

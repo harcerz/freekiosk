@@ -1,5 +1,5 @@
 /**
- * FreeKiosk v1.2 - Settings Components Export
+ * FreeKiosk v1.3 - Settings Components Export
  */
 
 export { default as SettingsSection } from './SettingsSection';
@@ -11,6 +11,7 @@ export { default as SettingsButton } from './SettingsButton';
 export { default as SettingsInfoBox } from './SettingsInfoBox';
 export { default as SettingsModeSelector } from './SettingsModeSelector';
 export { default as UrlListEditor } from './UrlListEditor';
+export { default as BackupRestoreSection } from './BackupRestoreSection';
 
 // URL Planner components
 export { default as DaySelector } from './DaySelector';

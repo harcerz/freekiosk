@@ -65,7 +65,8 @@ export const StorageService = {
 
   getUrl: async (): Promise<string | null> => {
     try {
-      return await AsyncStorage.getItem(KEYS.URL);
+      const url = await AsyncStorage.getItem(KEYS.URL);
+      return url;
     } catch (error) {
       console.error('Error getting URL:', error);
       return null;
@@ -83,7 +84,8 @@ export const StorageService = {
 
   getPin: async (): Promise<string | null> => {
     try {
-      return await AsyncStorage.getItem(KEYS.PIN);
+      const pin = await AsyncStorage.getItem(KEYS.PIN);
+      return pin;
     } catch (error) {
       console.error('Error getting PIN:', error);
       return null;
@@ -179,6 +181,24 @@ export const StorageService = {
         KEYS.STATUS_BAR_SHOW_BLUETOOTH,
         KEYS.STATUS_BAR_SHOW_VOLUME,
         KEYS.STATUS_BAR_SHOW_TIME,
+        KEYS.EXTERNAL_APP_TEST_MODE,
+        KEYS.BACK_BUTTON_MODE,
+        KEYS.BACK_BUTTON_TIMER_DELAY,
+        KEYS.KEYBOARD_MODE,
+        // URL Rotation
+        KEYS.URL_ROTATION_ENABLED,
+        KEYS.URL_ROTATION_LIST,
+        KEYS.URL_ROTATION_INTERVAL,
+        // URL Planner
+        KEYS.URL_PLANNER_ENABLED,
+        KEYS.URL_PLANNER_EVENTS,
+        // REST API
+        KEYS.REST_API_ENABLED,
+        KEYS.REST_API_PORT,
+        KEYS.REST_API_KEY,
+        KEYS.REST_API_ALLOW_CONTROL,
+        // Power Button
+        KEYS.ALLOW_POWER_BUTTON,
         // Legacy keys
         KEYS.SCREENSAVER_DELAY,
         KEYS.MOTION_DETECTION_ENABLED,

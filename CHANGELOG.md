@@ -13,14 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+***
+
+
+## [1.2.1] - 2026-01-18
+
 ### Added
-- 🔌 **Allow Power Button option**: New setting in Security tab to allow access to the power menu while in Lock Mode. Enables shutting down or restarting the device without exiting kiosk mode.
+- 🔌 **ADB Configuration Support**: Headless provisioning via Android Debug Bridge
+  - Configure FreeKiosk via command line without UI interaction
+  - Set locked app, URL, and all kiosk settings via ADB
+  - Auto-restart and launch external app after configuration
+  - Support for full JSON configuration or individual parameters
+  - [Full ADB Documentation](docs/ADB_CONFIG.md) with examples and scripts
+- � **Backup & Restore**: Export and import complete FreeKiosk configuration
+  - Export all settings to JSON file
+  - Import configuration from JSON file
+  - Perfect for device migration and configuration templates
+- �🔌 **Allow Power Button option**: New setting in Security tab to allow access to the power menu while in Lock Mode
 
 ### Fixed
-- 🔧 **Hard restart boot behavior**: Fixed issue where auto-launch wouldn't work after a hard restart (power + volume buttons hold). BootReceiver now verifies the auto-launch setting from storage before launching the app, ensuring consistent behavior regardless of restart method.
+- 🔧 **REST API Stability**: Improved server reliability and error handling
+- 🔧 **Hard restart boot behavior**: Fixed auto-launch issue after hard restart (power + volume buttons hold)
+- 🔧 **Database Synchronization**: Fixed data persistence with WAL checkpoint and file sync
 
 ### Changed
-- 📖 **FAQ updated**: Added entries for power button behavior, hard restart issues, and settings persistence after updates.
+- 📖 **Documentation**: Updated FAQ for power button behavior and hard restart issues
 
 
 ***

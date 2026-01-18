@@ -1,0 +1,359 @@
+# FreeKiosk ADB Configuration Guide
+
+Configure FreeKiosk via ADB commands for automated deployment and headless provisioning.
+
+## Overview
+
+FreeKiosk supports configuration via Android Debug Bridge (ADB) intent extras, enabling:
+- **Automated device provisioning** without UI interaction
+- **Mass deployment** across multiple devices
+- **Dynamic configuration** changes via scripts
+- **CI/CD integration** for testing
+
+## Security Model
+
+| Device State | Requirements |
+|--------------|-------------|
+| **Virgin setup** (no PIN configured) | PIN **must be provided** in the command |
+| **Already configured** | Existing PIN **required** to modify |
+
+This ensures:
+- ✅ First-time setup is scriptable with PIN protection
+- ✅ Configured devices cannot be hijacked via ADB
+- ✅ Factory reset re-enables ADB provisioning
+
+---
+
+## Quick Start
+
+### First-Time Setup (New Device)
+
+```bash
+# Set Device Owner (one-time, requires fresh device or factory reset)
+adb shell dpm set-device-owner com.freekiosk/.DeviceAdminReceiver
+
+# Configure and lock to external app
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es lock_package "com.example.myapp" \
+    --es pin "1234"
+```
+
+**Note**: Setting Device Owner is **highly recommended** for external app locking as it allows FreeKiosk to automatically manage all required permissions including "Display over other apps". Without Device Owner, this permission must be granted manually through Settings.
+
+### Configure WebView Kiosk
+
+```bash
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es url "https://your-dashboard.com" \
+    --es pin "1234"
+```
+
+**Note**: WebView mode doesn't require Device Owner as it doesn't need overlay permissions.
+
+---
+
+## Command Reference
+
+### Basic Syntax
+
+```bash
+adb shell am start -n com.freekiosk/.MainActivity [OPTIONS]
+```
+
+### Required Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `--es pin "XXXX"` | String | **Always required**. PIN for authentication (new or existing) |
+
+### App Lock Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `--es lock_package "com.app"` | String | Package name of app to lock device to |
+| `--ez auto_start true` | Boolean | Auto-launch the locked app after config |
+
+### WebView Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `--es url "https://..."` | String | URL to display in kiosk WebView |
+
+### Kiosk Mode Options
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--ez kiosk_enabled true` | Boolean | `true` | Enable/disable kiosk mode |
+| `--es auto_launch "true"` | String | - | Auto-launch on boot |
+| `--es auto_relaunch "true"` | String | - | Auto-relaunch if app crashes |
+| `--es status_bar "true"` | String | - | Show custom status bar |
+
+### REST API Options
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `--es rest_api_enabled "true"` | String | Enable REST API server |
+| `--es rest_api_port "8080"` | String | API server port |
+| `--es rest_api_key "secret"` | String | API authentication key |
+
+### Screensaver Options
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `--es screensaver_enabled "true"` | String | Enable screensaver on inactivity |
+
+---
+
+## Examples
+
+### 1. Cloud Gaming Kiosk
+
+Lock device to a game streaming app with auto-relaunch:
+
+```bash
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es lock_package "com.valvesoftware.steamlink" \
+    --es pin "1234" \
+    --es auto_relaunch "true" \
+    --ez auto_start true
+```
+
+### 2. Hotel Room Tablet
+
+Display hotel dashboard with REST API for Home Assistant:
+
+```bash
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es url "https://hotel.local/dashboard" \
+    --es pin "5678" \
+    --es rest_api_enabled "true" \
+    --es rest_api_port "8080" \
+    --es rest_api_key "hotel_secret_key" \
+    --es screensaver_enabled "true"
+```
+
+### 3. Restaurant Menu Display
+
+Simple URL kiosk:
+
+```bash
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es url "https://menu.restaurant.com" \
+    --es pin "0000" \
+    --es status_bar "false"
+```
+
+### 4. Full JSON Configuration
+
+For complex setups, use a JSON config. Note that shell escaping can be tricky - using individual parameters is often easier:
+
+```bash
+# Linux/Mac - use single quotes for JSON
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es pin "1234" \
+    --es config '{"lock_package":"com.app","auto_relaunch":"true"}'
+
+# Or use individual parameters (recommended for shell scripts)
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es lock_package "com.app" \
+    --es auto_relaunch "true" \
+    --es status_bar "true" \
+    --es rest_api_enabled "true" \
+    --es rest_api_port "8080" \
+    --es pin "1234"
+```
+
+### 5. Modify Existing Configuration
+
+Change the locked app on an already-configured device:
+
+```bash
+# Must use the existing PIN
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es lock_package "com.newapp.package" \
+    --es pin "1234"
+```
+
+---
+
+## JSON Configuration Format
+
+When using `--es config '{...}'`, the following keys are supported:
+
+```json
+{
+  "url": "https://example.com",
+  "lock_package": "com.example.app",
+  "display_mode": "external_app",
+  "kiosk_enabled": "true",
+  "auto_launch": "true",
+  "auto_relaunch": "true",
+  "screensaver_enabled": "true",
+  "screensaver_delay": "300000",
+  "screensaver_brightness": "10",
+  "status_bar_enabled": "true",
+  "status_bar_show_battery": "true",
+  "status_bar_show_wifi": "true",
+  "status_bar_show_time": "true",
+  "rest_api_enabled": "true",
+  "rest_api_port": "8080",
+  "rest_api_key": "your_api_key",
+  "allow_power_button": "false",
+  "back_button_mode": "disabled",
+  "default_brightness": "75"
+}
+```
+
+---
+
+## Complete Provisioning Script
+
+Here's a complete bash script for provisioning a new device:
+
+```bash
+#!/bin/bash
+# provision_kiosk.sh - Provision a FreeKiosk device
+
+PACKAGE="com.cloudgaming.app"
+PIN="1234"
+API_KEY="my_secret_key"
+
+echo "🔧 Setting Device Owner..."
+adb shell dpm set-device-owner com.freekiosk/.DeviceAdminReceiver
+
+echo "⏳ Waiting for device..."
+sleep 2
+
+echo "📱 Configuring FreeKiosk..."
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es lock_package "$PACKAGE" \
+    --es pin "$PIN" \
+    --es auto_relaunch "true" \
+    --es rest_api_enabled "true" \
+    --es rest_api_port "8080" \
+    --es rest_api_key "$API_KEY" \
+    --ez auto_start true
+
+echo "✅ Device provisioned!"
+echo "   Locked to: $PACKAGE"
+echo "   REST API: http://<device-ip>:8080"
+```
+
+---
+
+## PowerShell Script (Windows)
+
+```powershell
+# provision_kiosk.ps1 - Provision a FreeKiosk device (Windows)
+
+$Package = "com.cloudgaming.app"
+$Pin = "1234"
+$ApiKey = "my_secret_key"
+
+Write-Host "🔧 Setting Device Owner..."
+adb shell dpm set-device-owner com.freekiosk/.DeviceAdminReceiver
+
+Start-Sleep -Seconds 2
+
+Write-Host "📱 Configuring FreeKiosk..."
+# Note: JSON escaping in PowerShell is complex, use individual parameters
+adb shell am start -n com.freekiosk/.MainActivity `
+    --es lock_package $Package `
+    --es auto_relaunch "true" `
+    --es rest_api_enabled "true" `
+    --es rest_api_port "8080" `
+    --es rest_api_key $ApiKey `
+    --es pin $Pin `
+    --ez auto_start true
+
+Write-Host "✅ Device provisioned!"
+```
+
+---
+
+## Troubleshooting
+
+### Error: "PIN required for first setup"
+
+**Cause**: Device has no PIN configured, but none was provided.
+
+**Solution**: Add `--es pin "XXXX"` to your command.
+
+### Error: "PIN required" / "Invalid PIN"
+
+**Cause**: Device already configured, wrong or missing PIN.
+
+**Solution**: Use the existing PIN configured on the device.
+
+### Error: "Package not found"
+
+**Cause**: The `lock_package` app is not installed on the device.
+
+**Solution**: Install the target app first:
+```bash
+adb install myapp.apk
+```
+
+### External app doesn't stay on top / disappears
+
+**Cause**: FreeKiosk requires "Display over other apps" (SYSTEM_ALERT_WINDOW) permission to keep external apps locked.
+
+**Solution**:
+
+**Option 1: Set Device Owner (recommended for kiosks)**
+```bash
+adb shell dpm set-device-owner com.freekiosk/.DeviceAdminReceiver
+```
+With Device Owner, FreeKiosk can automatically grant itself all required permissions including "appear on top".
+
+**Option 2: Manual permission (without Device Owner)**
+1. Go to Settings → Apps → FreeKiosk → Display over other apps
+2. Enable the permission manually
+
+**Note**: Device Owner can only be set on a freshly reset device or during initial setup. Once set, all permissions are managed automatically.
+
+### Nothing happens
+
+**Cause**: ADB debugging might be disabled or device not authorized.
+
+**Solution**:
+1. Enable USB Debugging in Developer Options
+2. Accept the "Allow USB debugging" prompt on device
+3. Verify with `adb devices`
+
+### How to reset and re-provision
+
+```bash
+# Option 1: Factory reset (loses all data)
+adb shell am broadcast -a android.intent.action.MASTER_CLEAR
+
+# Option 2: Remove Device Owner + clear FreeKiosk data
+adb shell dpm remove-active-admin com.freekiosk/.DeviceAdminReceiver
+adb shell pm clear com.freekiosk
+```
+
+---
+
+## Security Considerations
+
+1. **ADB Access = Full Control**: Anyone with ADB access to an unlocked device can potentially reconfigure it. Disable USB debugging in production.
+
+2. **PIN Storage**: The ADB PIN is stored using SHA-256 hashing with salt, separate from the secure Keychain-stored PIN used by the UI.
+
+3. **Network ADB**: If using `adb tcpip`, ensure proper network security as anyone on the network could potentially access ADB.
+
+4. **Database Synchronization**: After applying configuration, FreeKiosk performs a WAL checkpoint and file sync before restarting to ensure all data is written to disk. This typically takes ~500ms.
+
+5. **Recommendations**:
+   - Use strong PINs (6+ digits)
+   - Disable USB debugging after setup in production
+   - Use Device Owner mode for full kiosk lockdown
+   - Consider physical security of USB port
+
+---
+
+## See Also
+
+- [REST API Documentation](REST_API.md) - Remote control via HTTP
+- [MDM Specification](MDM_SPEC.md) - Enterprise deployment
+- [Installation Guide](INSTALL.md) - Manual setup instructions

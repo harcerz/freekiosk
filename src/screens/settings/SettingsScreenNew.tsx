@@ -899,6 +899,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             onExitKioskMode={handleExitKioskMode}
             onRemoveDeviceOwner={handleRemoveDeviceOwner}
             kioskEnabled={kioskEnabled}
+            onRestoreComplete={loadSettings}
           />
         );
       

@@ -13,6 +13,9 @@ interface KioskModuleInterface {
   removeDeviceOwner(): Promise<boolean>;
   reboot(): Promise<boolean>;
   sendRemoteKey(key: string): Promise<boolean>;
+  // ADB Config PIN sync
+  saveAdbPinHash(pin: string): Promise<boolean>;
+  clearAdbPinHash(): Promise<boolean>;
 }
 
 const { KioskModule } = NativeModules;

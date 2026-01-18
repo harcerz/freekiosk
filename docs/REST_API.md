@@ -11,11 +11,23 @@ FreeKiosk includes a built-in REST API server for integration with **Home Assist
 
 ## Enabling the API
 
+### Via UI
 1. Open FreeKiosk Settings (5-tap on secret button → PIN)
 2. Go to **Advanced** tab
 3. Enable **REST API**
 4. Configure port and optional API key
 5. Save settings
+
+### Via ADB (Headless)
+```bash
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es pin "1234" \
+    --es rest_api_enabled "true" \
+    --es rest_api_port "8080" \
+    --es rest_api_key "your_secret_key"
+```
+
+See [ADB Configuration Guide](ADB_CONFIG.md) for full headless provisioning.
 
 ---
 
@@ -140,7 +152,7 @@ Device information.
     "model": "SM-T510",
     "manufacturer": "samsung",
     "android": "11",
-    "appVersion": "1.2.0"
+    "appVersion": "1.2.1"
   }
 }
 ```
@@ -491,6 +503,14 @@ Common errors:
 - `403 Forbidden` - Control commands disabled
 - `404 Not Found` - Unknown endpoint
 - `500 Internal Error` - Server error
+
+---
+
+## See Also
+
+- [ADB Configuration Guide](ADB_CONFIG.md) - Headless provisioning via ADB
+- [MDM Specification](MDM_SPEC.md) - Enterprise deployment
+- [Installation Guide](INSTALL.md) - Manual setup
 
 ---
 

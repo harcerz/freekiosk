@@ -11,7 +11,7 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/Version-1.2.0-blue.svg" alt="Version 1.2.0">
+    <img src="https://img.shields.io/badge/Version-1.2.1-blue.svg" alt="Version 1.2.1">
     <a href="https://github.com/rushb-fr/freekiosk/releases"><img src="https://img.shields.io/github/downloads/rushb-fr/freekiosk/total.svg" alt="Downloads"></a>
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
@@ -65,6 +65,13 @@ FreeKiosk is a **completely free and open-source** kiosk mode application for An
 - **Remote Control**: Android TV navigation (D-pad, back, home, etc.)
 - **Optional API Key** authentication
 - **[Full API Documentation](docs/REST_API.md)**
+
+### ADB / CLI Configuration 🆕
+- **Headless Provisioning** - Configure via ADB without touching the screen
+- **Mass Deployment** - Script deployment across multiple devices
+- **Full Config Support** - URL, app lock, REST API, screensaver, etc.
+- **Secure** - PIN required (first setup or modification)
+- **[Full ADB Configuration Guide](docs/ADB_CONFIG.md)**
 
 ### Device Owner Mode (Advanced)
 - **Complete Device Lockdown**
@@ -157,12 +164,28 @@ Success: Device owner set to package com.freekiosk
 text
 
 **5. Configure FreeKiosk**
+
+**Option A: Via UI**
 - Launch FreeKiosk
 - Tap 5 times on the secret button (default: bottom-right corner)
 - Enter default PIN: **1234**
 - Configure your URL
 - **Optional**: Enable "Pin App to Screen" for full lockdown
 - Save settings
+
+**Option B: Via ADB (Headless Provisioning)** 🆕
+```bash
+# Configure and lock to external app
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es lock_package "com.example.myapp" \
+    --es pin "1234"
+
+# Or configure WebView URL
+adb shell am start -n com.freekiosk/.MainActivity \
+    --es url "https://your-dashboard.com" \
+    --es pin "1234"
+```
+📖 **[Full ADB Configuration Guide](docs/ADB_CONFIG.md)**
 
 Done! Your tablet is now in kiosk mode.
 
@@ -235,7 +258,16 @@ Done! Your tablet is now in kiosk mode.
 
 ## 🗺️ Roadmap
 
-### ✅ v1.2.0 (Jan 2026) - UI Redesign, URL Management & REST API 🆕
+### ✅ v1.2.1 (Jan 2026) - ADB Configuration & Headless Provisioning 🆕
+- 🔌 **ADB Configuration Support**: Configure FreeKiosk via command line for automated deployment
+-  **Headless Provisioning**: Set locked app, URL, and all settings without UI interaction
+- 🚀 **Auto-restart & Launch**: Automatically restart and launch external app after configuration
+- 📝 **JSON & Parameter Support**: Full JSON config or individual parameters via ADB
+- 🛠️ **Mass Deployment Ready**: Perfect for CI/CD and enterprise provisioning- 💾 **Backup & Restore**: Export/import complete FreeKiosk configuration to/from JSON file- 🔌 **Allow Power Button**: New security setting to allow power menu access in Lock Mode
+- 🔧 **REST API Fixes**: Improved server stability and error handling
+- 📖 **[ADB Configuration Guide](docs/ADB_CONFIG.md)** with examples and scripts
+
+### ✅ v1.2.0 (Jan 2026) - UI Redesign, URL Management & REST API
 - 🎨 **Complete Settings UI Redesign**: Modern Material Design with 4 organized tabs (General, Display, Security, Advanced)
 - 🔄 **URL Rotation**: Automatically cycle through multiple URLs at configurable intervals
 - 📅 **URL Planner**: Schedule URLs based on time/date with recurring and one-time events

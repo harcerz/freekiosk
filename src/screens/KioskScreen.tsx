@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, NativeEventEmitter, NativeModules, AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNBrightness from 'react-native-brightness-newarch';
 import WebViewComponent from '../components/WebViewComponent';
 import StatusBar from '../components/StatusBar';
@@ -173,6 +174,15 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
           resetTimer();
           console.log('[API] Screensaver OFF');
         },
+        onScreenOn: () => {
+          setIsScreensaverActive(false);
+          resetTimer();
+          console.log('[API] Screen ON');
+        },
+        onScreenOff: () => {
+          setIsScreensaverActive(true);
+          console.log('[API] Screen OFF');
+        },
         onWake: () => {
           setIsScreensaverActive(false);
           resetTimer();
@@ -308,8 +318,14 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   }, [countdownActive, countdownSeconds, externalAppPackage]);
 
   useEffect(() => {
-    const unsubscribeFocus = navigation.addListener('focus', () => {
-      loadSettings();
+    const unsubscribeFocus = navigation.addListener('focus', async () => {
+      // HACK: Force AsyncStorage to check SharedPreferences migration
+      // This triggers AsyncStorage to look for data in SharedPreferences and migrate it to SQLite
+      try {
+        await AsyncStorage.getItem('__force_init__');
+      } catch (e) {}
+      
+      await loadSettings();
     });
 
     const unsubscribeBlur = navigation.addListener('blur', () => {
@@ -467,6 +483,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const loadSettings = async (): Promise<void> => {
     try {
       const savedUrl = await StorageService.getUrl();
+      console.log('[KioskScreen] savedUrl:', savedUrl);
       const savedAutoReload = await StorageService.getAutoReload();
       const savedKioskEnabled = await StorageService.getKioskEnabled();
       const savedScreensaverEnabled = await StorageService.getScreensaverEnabled();

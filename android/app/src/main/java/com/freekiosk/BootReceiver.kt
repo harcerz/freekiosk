@@ -3,49 +3,77 @@ package com.freekiosk
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
+import android.database.sqlite.SQLiteDatabase
+import android.os.Handler
+import android.os.Looper
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
-            intent.action == "android.intent.action.QUICKBOOT_POWERON") {
+            intent.action == "android.intent.action.QUICKBOOT_POWERON" ||
+            intent.action == "android.intent.action.REBOOT") {
             
-            // Check if auto-launch is enabled in settings before launching
-            // This prevents the app from launching after a hard restart if auto-launch was disabled
-            if (!isAutoLaunchEnabled(context)) {
-                DebugLog.d("BootReceiver", "Auto-launch is disabled, not starting app")
-                return
-            }
+            DebugLog.d("BootReceiver", "Boot detected: ${intent.action}")
             
-            DebugLog.d("BootReceiver", "Auto-launch is enabled, starting app")
-            
-            // Lance l'app au démarrage
-            val launchIntent = Intent(context, MainActivity::class.java)
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            context.startActivity(launchIntent)
+            // Add delay to ensure system is ready (important for Android 9)
+            Handler(Looper.getMainLooper()).postDelayed({
+                // Check if auto-launch is enabled in settings before launching
+                if (!isAutoLaunchEnabled(context)) {
+                    DebugLog.d("BootReceiver", "Auto-launch is disabled, not starting app")
+                    return@postDelayed
+                }
+                
+                DebugLog.d("BootReceiver", "Auto-launch is enabled, starting app")
+                
+                // Launch the app on startup
+                val launchIntent = Intent(context, MainActivity::class.java)
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                
+                try {
+                    context.startActivity(launchIntent)
+                    DebugLog.d("BootReceiver", "Successfully launched MainActivity")
+                } catch (e: Exception) {
+                    DebugLog.errorProduction("BootReceiver", "Failed to launch app: ${e.message}")
+                }
+            }, 3000) // 3 second delay to ensure system is ready
         }
     }
     
     /**
      * Check if auto-launch is enabled by reading from AsyncStorage (React Native storage)
-     * AsyncStorage uses SharedPreferences under the hood with the database name "RKStorage"
+     * Modern AsyncStorage (@react-native-async-storage/async-storage v2.x) uses SQLite database
      */
     private fun isAutoLaunchEnabled(context: Context): Boolean {
         return try {
-            // AsyncStorage in React Native stores data in SharedPreferences with name "RKStorage"
-            val prefs: SharedPreferences = context.getSharedPreferences("RKStorage", Context.MODE_PRIVATE)
-            val autoLaunchValue = prefs.getString("@kiosk_auto_launch", null)
+            // AsyncStorage stores data in SQLite database "RKStorage" with table "catalystLocalStorage"
+            val dbPath = context.getDatabasePath("RKStorage").absolutePath
+            val db = SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READONLY)
             
-            // If not set, default to false (don't auto-launch unless explicitly enabled)
-            if (autoLaunchValue == null) {
+            val cursor = db.rawQuery(
+                "SELECT value FROM catalystLocalStorage WHERE key = ?",
+                arrayOf("@kiosk_auto_launch")
+            )
+            
+            val isEnabled = if (cursor.moveToFirst()) {
+                val value = cursor.getString(0)
+                cursor.close()
+                db.close()
+                
+                // AsyncStorage stores values as JSON strings, so "true" or "false"
+                val enabled = value == "true"
+                DebugLog.d("BootReceiver", "Auto-launch setting: $enabled (value=$value)")
+                enabled
+            } else {
+                cursor.close()
+                db.close()
+                
+                // If not set, default to false (don't auto-launch unless explicitly enabled)
                 DebugLog.d("BootReceiver", "Auto-launch setting not found, defaulting to false")
-                return false
+                false
             }
             
-            // AsyncStorage stores values as JSON strings, so "true" or "false"
-            val isEnabled = autoLaunchValue == "true"
-            DebugLog.d("BootReceiver", "Auto-launch setting: $isEnabled")
             isEnabled
         } catch (e: Exception) {
             DebugLog.errorProduction("BootReceiver", "Error reading auto-launch setting: ${e.message}")
