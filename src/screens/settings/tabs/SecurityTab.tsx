@@ -181,7 +181,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
               value: 'tap_anywhere',
               label: 'Tap Anywhere',
               icon: 'gesture-tap',
-              hint: 'Tap N times anywhere on screen',
+              hint: 'Tap N times in the same area (taps must be grouped)',
             },
             {
               value: 'button',

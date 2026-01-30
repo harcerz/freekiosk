@@ -978,18 +978,37 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const tapX = event.x ?? 0;
       const tapY = event.y ?? 0;
       
-      // tap_anywhere mode - no spatial restriction
+      // tap_anywhere mode with spatial proximity - taps must be grouped together
       if (tapCountRef.current === 0) {
+        // First tap - store position and time
+        firstTapXRef.current = tapX;
+        firstTapYRef.current = tapY;
         lastTapTimeRef.current = now;
+        tapCountRef.current = 1;
         console.log(`[${returnTapCount}-tap ANYWHERE] First tap at (${tapX.toFixed(0)}, ${tapY.toFixed(0)})`);
+      } else {
+        // Check spatial proximity - must be within TAP_PROXIMITY_RADIUS of first tap
+        const dx = tapX - firstTapXRef.current;
+        const dy = tapY - firstTapYRef.current;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance <= TAP_PROXIMITY_RADIUS) {
+          // Within proximity, count the tap
+          tapCountRef.current += 1;
+          console.log(`[${returnTapCount}-tap] Count: ${tapCountRef.current}/${returnTapCount} at (${tapX.toFixed(0)}, ${tapY.toFixed(0)}) - distance: ${distance.toFixed(0)}px ✓`);
+        } else {
+          // Too far from first tap - reset and start new sequence
+          console.log(`[${returnTapCount}-tap] Too far (${distance.toFixed(0)}px > ${TAP_PROXIMITY_RADIUS}px) - resetting sequence`);
+          firstTapXRef.current = tapX;
+          firstTapYRef.current = tapY;
+          lastTapTimeRef.current = now;
+          tapCountRef.current = 1;
+        }
       }
-      
-      tapCountRef.current += 1;
-      console.log(`[${returnTapCount}-tap] Count: ${tapCountRef.current}/${returnTapCount} at (${tapX.toFixed(0)}, ${tapY.toFixed(0)})`);
       
       // If N taps reached, go to PIN screen
       if (tapCountRef.current >= returnTapCount) {
-        console.log(`[${returnTapCount}-tap] ✅ ${returnTapCount} taps reached! Going to PIN`);
+        console.log(`[${returnTapCount}-tap] ✅ ${returnTapCount} grouped taps reached! Going to PIN`);
         tapCountRef.current = 0;
         if (tapTimerRef.current) {
           clearTimeout(tapTimerRef.current);
