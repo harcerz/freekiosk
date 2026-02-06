@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Text, NativeEventEmitter, NativeModules, AppState, DeviceEventEmitter, Dimensions, Pressable } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNBrightness from 'react-native-brightness-newarch';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import WebViewComponent, { WebViewComponentRef } from '../components/WebViewComponent';
 import StatusBar from '../components/StatusBar';
 import MotionDetector from '../components/MotionDetector';
@@ -66,6 +66,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [keyboardMode, setKeyboardMode] = useState<string>('default');
   const [allowPowerButton, setAllowPowerButton] = useState<boolean>(false);
+  const [allowNotifications, setAllowNotifications] = useState<boolean>(false);
   const appStateRef = useRef(AppState.currentState);
   const appLaunchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tapCountRef = useRef<number>(0);
@@ -553,6 +554,26 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       } catch (e) {}
       
       await loadSettings();
+      
+      // Reload blocking overlays to ensure they stay active when returning from settings
+      try {
+        const blockingEnabled = await StorageService.getBlockingOverlaysEnabled();
+        const blockingRegions = await StorageService.getBlockingOverlaysRegions();
+        if (blockingEnabled) {
+          await BlockingOverlayModule.applyConfiguration(true, blockingRegions);
+          // Recalculate after a short delay to ensure correct dimensions
+          setTimeout(async () => {
+            try {
+              await BlockingOverlayModule.updateOverlays();
+              console.log('[KioskScreen] Blocking overlays reloaded on focus');
+            } catch (e) {
+              console.error('[KioskScreen] Failed to reload overlays:', e);
+            }
+          }, 300);
+        }
+      } catch (e) {
+        console.error('[KioskScreen] Error reloading blocking overlays:', e);
+      }
     });
 
     const unsubscribeBlur = navigation.addListener('blur', async () => {
@@ -780,6 +801,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedBackButtonTimerDelay = await StorageService.getBackButtonTimerDelay();
       const savedKeyboardMode = await StorageService.getKeyboardMode();
       const savedAllowPowerButton = await StorageService.getAllowPowerButton();
+      const savedAllowNotifications = await StorageService.getAllowNotifications();
 
       setDisplayMode(savedDisplayMode);
       setExternalAppPackage(savedExternalAppPackage);
@@ -788,6 +810,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       setBackButtonTimerDelay(savedBackButtonTimerDelay);
       setKeyboardMode(savedKeyboardMode);
       setAllowPowerButton(savedAllowPowerButton);
+      setAllowNotifications(savedAllowNotifications);
       
       // Load return button settings (for WebView mode)
       const savedReturnButtonVisible = await StorageService.getOverlayButtonVisible();
@@ -887,7 +910,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         try {
           // Pass external app package so it gets added to whitelist
           const packageToWhitelist = savedDisplayMode === 'external_app' && savedExternalAppPackage ? savedExternalAppPackage : undefined;
-          await KioskModule.startLockTask(packageToWhitelist, savedAllowPowerButton);
+          await KioskModule.startLockTask(packageToWhitelist, savedAllowPowerButton, savedAllowNotifications);
         } catch {
           // Silent fail
         }

@@ -213,22 +213,24 @@ class MainActivity : ReactActivity() {
     if (!devicePolicyManager.isDeviceOwnerApp(packageName)) return
 
     try {
-      // Read allowPowerButton setting from AsyncStorage (SharedPreferences)
+      // Read settings from AsyncStorage (SharedPreferences)
       val prefs = getSharedPreferences("RKStorage", Context.MODE_PRIVATE)
       val allowPowerButtonValue = prefs.getString("@kiosk_allow_power_button", null)
       val allowPowerButton = allowPowerButtonValue == "true"
+      val allowNotificationsValue = prefs.getString("@kiosk_allow_notifications", null)
+      val allowNotifications = allowNotificationsValue == "true"
       
-      // Configurer les features Lock Task based on allowPowerButton setting
+      // Configurer les features Lock Task based on settings
       if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-        val lockTaskFeatures = if (allowPowerButton) {
-          // Allow only Global Actions (power menu) for power button functionality
-          DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
-        } else {
-          // LOCK_TASK_FEATURE_NONE = 0 : Bloque tout (pas de Home, Recents, notifications, etc.)
-          DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+        var lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+        if (allowPowerButton) {
+          lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+        }
+        if (allowNotifications) {
+          lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
         }
         devicePolicyManager.setLockTaskFeatures(adminComponent, lockTaskFeatures)
-        DebugLog.d("MainActivity", "Lock task features set to ${if (allowPowerButton) "GLOBAL_ACTIONS (power button enabled)" else "NONE (full lockdown)"}")
+        DebugLog.d("MainActivity", "Lock task features set: powerButton=$allowPowerButton, notifications=$allowNotifications (flags=$lockTaskFeatures)")
       }
 
       val samsungUpdateApps = arrayOf(

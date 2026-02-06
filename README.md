@@ -11,7 +11,7 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/Version-1.2.4-blue.svg" alt="Version 1.2.4">
+    <img src="https://img.shields.io/badge/Version-1.2.5-blue.svg" alt="Version 1.2.5">
     <a href="https://github.com/rushb-fr/freekiosk/releases"><img src="https://img.shields.io/github/downloads/rushb-fr/freekiosk/total.svg" alt="Downloads"></a>
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
@@ -62,6 +62,7 @@ FreeKiosk is a **completely free and open-source** kiosk mode application for An
 - **Controls**: Screen on/off, brightness, volume, navigation, reload
 - **Audio**: Play sounds, TTS, beep notifications
 - **Screenshot**: Capture screen as PNG image
+- **Camera Photo**: Take photos via front/back camera as JPEG
 - **Remote Control**: Android TV navigation (D-pad, back, home, etc.)
 - **Optional API Key** authentication
 - **[Full API Documentation](docs/REST_API.md)**
@@ -244,7 +245,7 @@ Done! Your tablet is now in kiosk mode.
 | **HTTPS Self-signed** | ✅ | ⚠️ |
 | **In-app Reset** | ✅ | ⚠️ |
 | **Auto-start** | ✅ | ✅ |
-| **Camera photo API** | Roadmap | ✅ |
+| **Camera photo API** | ✅ | ✅ |
 | **Cloud MDM** | Roadmap | ✅ |
 
 ---
@@ -260,7 +261,32 @@ Done! Your tablet is now in kiosk mode.
 
 ## 🗺️ Roadmap
 
-### ✅ v1.2.3 (Jan 2026) - Auto Brightness & Security Improvements 🆕
+### ✅ v1.2.5 (Feb 2026) - Camera API & Screen State Improvements 🆕
+- 📷 **Camera Photo API**: Take photos via REST endpoint using device cameras
+  - `GET /api/camera/photo?camera=back&quality=80` - Capture JPEG photo
+  - `GET /api/camera/list` - List available cameras with capabilities
+  - Supports front and back cameras with configurable JPEG quality (1-100)
+  - Auto-exposure and auto-focus warmup for optimal photo quality
+  - Optimized resolution (~1.2MP) for fast HTTP transfer
+  - Compatible with Home Assistant `camera` platform integration
+- 🖼️ **Screensaver API State Separation**: Clarified screen status reporting
+  - `"on"`: Reports PHYSICAL screen state (PowerManager.isInteractive)
+  - `"screensaverActive"`: Separate boolean for screensaver overlay state
+  - Allows clients to distinguish: screen physically on vs content visible to user
+- 🔢 **Dynamic Version Reporting**: API now reads version from BuildConfig
+  - Automatically syncs with `versionName` in build.gradle
+  - No manual updates needed when version changes
+
+### ✅ v1.2.4 (Feb 2026) - HTTP Server Reliability
+- 📡 **HTTP Server Screen-Off Availability**: Fixed server becoming unreachable when screen is off
+  - Added `WifiLock (WIFI_MODE_FULL_HIGH_PERF)` to prevent WiFi from sleeping
+  - Added `PARTIAL_WAKE_LOCK` to keep CPU active for background HTTP processing
+  - Server now remains accessible 24/7 regardless of screen state
+  - Locks are automatically released when server stops to preserve battery
+- 🔒 **Blocking Overlay**: Bug fixes for blocking overlay display and behavior
+- 🔄 **Auto Relaunch External App**: Bug fixes for automatic external app relaunching
+
+### ✅ v1.2.3 (Jan 2026) - Auto Brightness & Security Improvements
 - 📷 **Motion Detection Camera Selection**: Choose which camera to use for motion detection (front/back)
 - 🔘 **Flexible PIN Access Button**: Choose between fixed corner button or tap-anywhere mode for accessing settings
 - ⬅️ **WebView Back Button**: Optional back navigation button in WebView for easier browsing
@@ -375,7 +401,7 @@ Done! Your tablet is now in kiosk mode.
 - ✅ English language UI
 
 ### v1.3.0 (Q1 2026)
-- [ ] 📷 Camera Photo API - Take photos via REST endpoint
+- [X] 📷 Camera Photo API - Take photos via REST endpoint
 - [X] 🔆 Auto-brightness - Adjust brightness based on light sensor
 - [ ] 📲 QR Code Config - Scan QR to configure app settings
 - [X] 💾 Backup/Restore - Export and import configuration
@@ -400,6 +426,7 @@ Done! Your tablet is now in kiosk mode.
 - [ ] 📡 MQTT Support - Alternative to REST for real-time events
 - [ ] 🔗 Tasker Integration - Android automation support
 - [ ] 📺 Chromecast Support - Cast content to displays
+- [ ] 🎮 **Physical Button Remapping** - Reassign device buttons (volume, camera, custom) to custom actions
 
 ---
 

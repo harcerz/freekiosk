@@ -29,6 +29,7 @@ import com.facebook.react.bridge.*
 import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.freekiosk.DeviceAdminReceiver
+import com.freekiosk.CameraPhotoModule
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -91,6 +92,9 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
     // Server lifecycle management
     private var wifiLock: WifiManager.WifiLock? = null
     private var cpuWakeLock: PowerManager.WakeLock? = null
+    
+    // Camera
+    private var cameraPhotoModule: CameraPhotoModule? = null
 
     init {
         initSensors()
@@ -142,13 +146,19 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             // Acquire locks to keep server running even when screen is off
             acquireServerLocks()
 
+            // Initialize camera module
+            if (cameraPhotoModule == null) {
+                cameraPhotoModule = CameraPhotoModule(reactContext.applicationContext)
+            }
+
             server = KioskHttpServer(
                 port = port,
                 apiKey = if (apiKey.isNullOrEmpty()) null else apiKey,
                 allowControl = allowControl,
                 statusProvider = { getDeviceStatus() },
                 commandHandler = { command, params -> handleCommand(command, params) },
-                screenshotProvider = { captureScreenshot() }
+                screenshotProvider = { captureScreenshot() },
+                cameraPhotoProvider = { camera, quality -> cameraPhotoModule?.capturePhoto(camera, quality) }
             )
 
             server?.start()
@@ -263,8 +273,12 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
         val screenStatus = JSONObject().apply {
             // Get actual screen state from PowerManager
             val powerManager = reactContext.getSystemService(Context.POWER_SERVICE) as PowerManager
-            val isScreenOn = powerManager.isInteractive
-            put("on", isScreenOn)
+            val isInteractive = powerManager.isInteractive
+            
+            // "on" reflects the PHYSICAL screen state (PowerManager.isInteractive)
+            // "screensaverActive" is separate - indicates if screensaver overlay is showing
+            // This allows clients to distinguish: screen physically on vs content visible
+            put("on", isInteractive)
             put("brightness", jsBrightness)
             put("screensaverActive", jsScreensaverActive)
         }
@@ -297,7 +311,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
         val deviceStatus = JSONObject().apply {
             put("ip", getLocalIpAddress())
             put("hostname", "freekiosk")
-            put("version", "1.2.3")
+            put("version", com.freekiosk.BuildConfig.VERSION_NAME)
             put("isDeviceOwner", false)
             put("kioskMode", jsKioskMode)
         }
@@ -515,6 +529,23 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                         put("min", jsAutoBrightnessMin)
                         put("max", jsAutoBrightnessMax)
                         put("currentLightLevel", lightValue)
+                    })
+                }
+            }
+            "cameraList" -> {
+                val cameras = cameraPhotoModule?.getAvailableCameras() ?: emptyList()
+                return JSONObject().apply {
+                    put("executed", true)
+                    put("command", command)
+                    put("cameras", org.json.JSONArray().apply {
+                        cameras.forEach { cam ->
+                            put(JSONObject().apply {
+                                put("id", cam["id"])
+                                put("facing", cam["facing"])
+                                put("maxWidth", cam["maxWidth"])
+                                put("maxHeight", cam["maxHeight"])
+                            })
+                        }
                     })
                 }
             }
@@ -887,6 +918,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             toneGenerator?.release()
             toneGenerator = null
             sensorManager?.unregisterListener(this)
+            cameraPhotoModule = null
             Log.d(TAG, "HttpServerModule cleaned up")
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup: ${e.message}")

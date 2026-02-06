@@ -50,6 +50,8 @@ const KEYS = {
   REST_API_ALLOW_CONTROL: '@kiosk_rest_api_allow_control',
   // Power Button setting
   ALLOW_POWER_BUTTON: '@kiosk_allow_power_button',
+  // Notifications (NFC support)
+  ALLOW_NOTIFICATIONS: '@kiosk_allow_notifications',
   // Return to Settings
   RETURN_TAP_COUNT: '@kiosk_return_tap_count',
   RETURN_TAP_TIMEOUT: '@kiosk_return_tap_timeout',
@@ -225,6 +227,8 @@ export const StorageService = {
         KEYS.REST_API_ALLOW_CONTROL,
         // Power Button
         KEYS.ALLOW_POWER_BUTTON,
+        // Notifications
+        KEYS.ALLOW_NOTIFICATIONS,
         // Return to Settings
         KEYS.RETURN_TAP_COUNT,
         KEYS.VOLUME_UP_5TAP_ENABLED,
@@ -1041,6 +1045,25 @@ export const StorageService = {
       return value ? JSON.parse(value) : false; // Default OFF for maximum security
     } catch (error) {
       console.error('Error getting allow power button:', error);
+      return false;
+    }
+  },
+
+  // NOTIFICATIONS (NFC SUPPORT)
+  saveAllowNotifications: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.ALLOW_NOTIFICATIONS, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving allow notifications:', error);
+    }
+  },
+
+  getAllowNotifications: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.ALLOW_NOTIFICATIONS);
+      return value ? JSON.parse(value) : false; // Default OFF for maximum security
+    } catch (error) {
+      console.error('Error getting allow notifications:', error);
       return false;
     }
   },

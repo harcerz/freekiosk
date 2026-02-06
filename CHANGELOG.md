@@ -14,12 +14,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ***
 
+## [1.2.5] - 2026-02-06
+
+### Added
+- 📷 **Camera Photo API**: Take photos via REST endpoint using device cameras
+  - `GET /api/camera/photo?camera=back&quality=80` - Capture JPEG photo
+  - `GET /api/camera/list` - List available cameras with capabilities
+  - Supports front and back cameras with configurable JPEG quality (1-100)
+  - Auto-exposure and auto-focus warmup for optimal photo quality
+  - Optimized resolution (~1.2MP) for fast HTTP transfer
+  - Compatible with Home Assistant `camera` platform integration
+
+### Fixed
+- 🖼️ **Screensaver API State Separation**: Clarified screen status reporting in REST API
+  - GET `/api/screen` now separates physical screen state from screensaver overlay state
+  - `"on"`: Reports PHYSICAL screen state via PowerManager.isInteractive (true even if screensaver active)
+  - `"screensaverActive"`: Separate boolean indicating if screensaver overlay is showing
+  - Allows clients to distinguish: screen physically on vs content visible to user
+- 🔢 **Version Reporting**: API now dynamically reads version from BuildConfig instead of hardcoded value
+  - Automatically syncs with `versionName` in build.gradle
+  - No more manual updates needed when version changes
+  - Single source of truth for version information
+- 🔐 **PIN Input Stability**: Completely refactored PIN masking system for universal device compatibility
+  - Now uses native `secureTextEntry` instead of manual bullet masking
+  - Fixes duplicate/random character issues on certain Android devices/keyboards
+  - Eliminates input desynchronization problems
+  - Adds autocomplete prevention (`autoComplete="off"`, `textContentType="none"`, `importantForAutofill="no"`)
+
+***
+
 ## [1.2.4] - 2026-02-05
 
 ### Fixed
-- 🖼️ **Screen Saver**: Bug fixes for screen saver functionality
+- 📡 **HTTP Server Screen-Off Availability**: Fixed HTTP server becoming unreachable when screen is off
+  - Added `WifiLock (WIFI_MODE_FULL_HIGH_PERF)` to prevent WiFi from sleeping
+  - Added `PARTIAL_WAKE_LOCK` to keep CPU active for background HTTP processing
+  - Server now remains accessible 24/7 regardless of screen state
+  - Locks are automatically released when server stops to preserve battery
 - 🔒 **Blocking Overlay**: Bug fixes for blocking overlay display and behavior
-- 🌐 **REST API**: Bug fixes for REST API endpoints
 - 🔄 **Auto Relaunch External App**: Bug fixes for automatic external app relaunching
 
 ***

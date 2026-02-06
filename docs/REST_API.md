@@ -82,6 +82,7 @@ Returns complete device status in one call.
 ```
 
 #### `GET /api/screen`
+Returns screen status with separated physical and overlay states.
 ```json
 {
   "success": true,
@@ -92,6 +93,33 @@ Returns complete device status in one call.
   }
 }
 ```
+
+**Field Descriptions:**
+- `on`: Physical screen state from `PowerManager.isInteractive`
+  - `true` = screen is physically on (consuming power)
+  - `false` = screen is physically off (power button pressed or `lockNow()` called)
+  - Note: Returns `true` even when screensaver overlay is active
+- `brightness`: Current brightness percentage (0-100)
+- `screensaverActive`: Whether the screensaver overlay is showing
+  - `true` = screensaver overlay is covering content (screen may be dimmed)
+  - `false` = normal content is visible
+
+**Interpreting Combined States:**
+```javascript
+// Screen physically on + content visible
+{ "on": true, "screensaverActive": false }
+
+// Screen physically on + screensaver overlay (dimmed/attenuated)
+{ "on": true, "screensaverActive": true }
+
+// Screen physically off (power button or Device Owner lockNow())
+{ "on": false, "screensaverActive": false }
+```
+
+**Use Cases:**
+- To check if screen is consuming power: `on === true`
+- To check if content is visible to user: `on === true && screensaverActive === false`
+- To check if in power-saving mode: `on === false || screensaverActive === true`
 
 #### `GET /api/sensors`
 Returns light, proximity, and accelerometer data.
@@ -174,6 +202,43 @@ Returns a PNG image of the current screen.
 
 **Response**: `image/png` binary data
 
+#### `GET /api/camera/photo`
+📷 Take a photo using the device camera. **(v1.2.5+)**
+
+**Query Parameters:**
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `camera` | `back` | Camera to use: `front` or `back` |
+| `quality` | `80` | JPEG compression quality (1-100) |
+
+**Example:**
+```
+GET /api/camera/photo?camera=back&quality=80
+GET /api/camera/photo?camera=front&quality=60
+```
+
+**Response**: `image/jpeg` binary data
+
+**Notes:**
+- First capture may take 1-2 seconds (camera initialization + auto-exposure)
+- Camera permission must be granted (already included in app permissions)
+- Photo resolution is automatically optimized (~1.2MP) for fast HTTP transfer
+- Higher quality values produce larger files
+
+#### `GET /api/camera/list`
+List available cameras on the device. **(v1.2.5+)**
+```json
+{
+  "success": true,
+  "data": {
+    "cameras": [
+      { "id": "0", "facing": "back", "maxWidth": 4032, "maxHeight": 3024 },
+      { "id": "1", "facing": "front", "maxWidth": 2560, "maxHeight": 1920 }
+    ]
+  }
+}
+```
+
 ---
 
 ### Control Commands (POST)
@@ -223,9 +288,15 @@ Turn screen off.
 > |---------|---------------------|-------------------|
 > | `screen/off` | ⚠️ Dims to 0% brightness (screen stays on) | ✅ Actually turns off screen via `lockNow()` |
 > | `screen/on` | Restores brightness | Wakes device from sleep |
-> | Screen state detection | ✅ Works (physical button detected) | ✅ Works (all methods detected) |
+> | Screen state detection | ✅ `"on"` reflects physical state via PowerManager | ✅ `"on"` reflects physical state (all methods) |
+> | Screensaver overlay | ✅ `"screensaverActive"` independent of `"on"` | ✅ `"screensaverActive"` independent of `"on"` |
 > | HTTP Server availability | ✅ Always accessible (v1.2.4+) | ✅ Always accessible |
 > | `reboot` | ❌ Not available | ✅ Works |
+> 
+> **Understanding `"on"` vs `"screensaverActive"`:**  
+> - `"on"` reports the **physical screen state** (PowerManager.isInteractive)
+> - `"screensaverActive"` reports whether the **screensaver overlay** is showing
+> - These are **independent**: screensaver can be active while screen is physically on
 > 
 > **Why can't regular apps turn off the screen?**  
 > Android security prevents non-system apps from turning off the screen to protect against malicious apps. Only Device Owner apps have this privilege via `DevicePolicyManager.lockNow()`. Without Device Owner, `/api/screen/off` can only dim the screen to minimum brightness.
@@ -449,6 +520,23 @@ camera:
     still_image_url: http://TABLET_IP:8080/api/screenshot
     content_type: image/png
 ```
+
+### Device Camera (Photo) 📷
+
+```yaml
+camera:
+  - platform: generic
+    name: "Tablet Camera (Back)"
+    still_image_url: http://TABLET_IP:8080/api/camera/photo?camera=back&quality=80
+    content_type: image/jpeg
+
+  - platform: generic
+    name: "Tablet Camera (Front)"
+    still_image_url: http://TABLET_IP:8080/api/camera/photo?camera=front&quality=80
+    content_type: image/jpeg
+```
+
+> 💡 **Tip**: Use the front camera as a basic security camera, or the back camera for monitoring. Combine with automations to capture photos on motion detection events.
 
 ### Example Automations
 

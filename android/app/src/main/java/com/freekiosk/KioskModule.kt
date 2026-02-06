@@ -85,7 +85,7 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
     }
 
     @ReactMethod
-    fun startLockTask(externalAppPackage: String?, allowPowerButton: Boolean, promise: Promise) {
+    fun startLockTask(externalAppPackage: String?, allowPowerButton: Boolean, allowNotifications: Boolean, promise: Promise) {
         try {
             val activity = reactApplicationContext.currentActivity
             if (activity != null && activity is MainActivity) {
@@ -109,17 +109,17 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                                 }
                             }
                             
-                            // Configure Lock Task features based on allowPowerButton setting
+                            // Configure Lock Task features based on settings
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                                val lockTaskFeatures = if (allowPowerButton) {
-                                    // Allow only Global Actions (power menu) for power button functionality
-                                    DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
-                                } else {
-                                    // Full lockdown - no system features allowed
-                                    DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+                                var lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+                                if (allowPowerButton) {
+                                    lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+                                }
+                                if (allowNotifications) {
+                                    lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
                                 }
                                 dpm.setLockTaskFeatures(adminComponent, lockTaskFeatures)
-                                android.util.Log.d("KioskModule", "Lock task features set to ${if (allowPowerButton) "GLOBAL_ACTIONS (power button enabled)" else "NONE (full lockdown)"}")
+                                android.util.Log.d("KioskModule", "Lock task features set: powerButton=$allowPowerButton, notifications=$allowNotifications (flags=$lockTaskFeatures)")
                             }
                             
                             dpm.setLockTaskPackages(adminComponent, whitelist.toTypedArray())

@@ -10,14 +10,13 @@ interface PinInputProps {
 
 const PinInput: React.FC<PinInputProps> = ({ onSuccess }) => {
   const [pin, setPin] = useState<string>('');
-  const [displayValue, setDisplayValue] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isLockedOut, setIsLockedOut] = useState<boolean>(false);
   const [lockoutTimeRemaining, setLockoutTimeRemaining] = useState<number>(0);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number>(5);
   const [hasPinConfigured, setHasPinConfigured] = useState<boolean>(false);
   const [pinMode, setPinMode] = useState<'numeric' | 'alphanumeric'>('numeric');
-  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     checkLockoutStatus();
@@ -26,53 +25,19 @@ const PinInput: React.FC<PinInputProps> = ({ onSuccess }) => {
     const interval = setInterval(checkLockoutStatus, 1000);
     return () => {
       clearInterval(interval);
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
-      }
     };
   }, []);
 
-  // Handle PIN masking with last character visible temporarily
+  // Simple and reliable PIN change handler
+  // Uses native secureTextEntry for masking - no manual bullet management
   const handlePinChange = (text: string): void => {
-    // Clear any pending timeout
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-    }
-
-    // The text we receive contains masked characters (•) and possibly new characters
-    // We need to reconstruct the real PIN
-    const currentPinLength = pin.length;
-    const newTextLength = text.length;
-
-    let newPin: string;
-
-    if (newTextLength > currentPinLength) {
-      // User typed new character(s) - append them to real PIN
-      const newChars = text.slice(currentPinLength);
-      newPin = pin + newChars;
-    } else if (newTextLength < currentPinLength) {
-      // User deleted character(s) - truncate real PIN
-      newPin = pin.slice(0, newTextLength);
+    // For numeric mode, filter out non-numeric characters
+    if (pinMode === 'numeric') {
+      const filtered = text.replace(/[^0-9]/g, '');
+      setPin(filtered);
     } else {
-      // Same length - no change
-      newPin = pin;
+      setPin(text);
     }
-
-    setPin(newPin);
-
-    if (newPin.length === 0) {
-      setDisplayValue('');
-      return;
-    }
-
-    // Show masked value with last character visible
-    const masked = '•'.repeat(Math.max(0, newPin.length - 1)) + newPin.slice(-1);
-    setDisplayValue(masked);
-
-    // After 500ms, mask the last character too
-    hideTimeoutRef.current = setTimeout(() => {
-      setDisplayValue('•'.repeat(newPin.length));
-    }, 500);
   };
 
   const loadPinMode = async (): Promise<void> => {
@@ -180,15 +145,20 @@ const PinInput: React.FC<PinInputProps> = ({ onSuccess }) => {
           )}
 
           <TextInput
+            ref={inputRef}
             style={[styles.input, isLoading && styles.inputDisabled]}
-            value={displayValue}
+            value={pin}
             onChangeText={handlePinChange}
+            secureTextEntry={true}
             keyboardType={pinMode === 'alphanumeric' ? 'default' : 'numeric'}
             maxLength={pinMode === 'alphanumeric' ? undefined : 6}
             placeholder={pinMode === 'alphanumeric' ? 'Enter password' : '••••'}
             autoFocus
             autoCapitalize={pinMode === 'alphanumeric' ? 'none' : undefined}
             autoCorrect={false}
+            autoComplete="off"
+            textContentType="none"
+            importantForAutofill="no"
             editable={!isLoading && !isLockedOut}
           />
 

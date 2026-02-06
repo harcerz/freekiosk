@@ -28,6 +28,10 @@ interface SecurityTabProps {
   allowPowerButton: boolean;
   onAllowPowerButtonChange: (value: boolean) => void;
   
+  // Notifications (NFC support)
+  allowNotifications: boolean;
+  onAllowNotificationsChange: (value: boolean) => void;
+  
   // Return to Settings
   returnMode: string; // 'tap_anywhere' | 'button'
   onReturnModeChange: (value: string) => void;
@@ -63,6 +67,8 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
   onKioskEnabledChange,
   allowPowerButton,
   onAllowPowerButtonChange,
+  allowNotifications,
+  onAllowNotificationsChange,
   returnMode,
   onReturnModeChange,
   returnTapCount,
@@ -144,6 +150,13 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
               hint="Allow access to power menu to shut down or restart device. When disabled, power button only turns screen on/off."
               value={allowPowerButton}
               onValueChange={onAllowPowerButtonChange}
+            />
+            <View style={styles.divider} />
+            <SettingsSwitch
+              label="📡 Allow Notifications (NFC)"
+              hint="Enable notification dispatch to allow NFC tag reading in external apps. Note: this also makes the notification panel accessible."
+              value={allowNotifications}
+              onValueChange={onAllowNotificationsChange}
             />
           </>
         )}
