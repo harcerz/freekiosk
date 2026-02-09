@@ -28,6 +28,7 @@ interface WebViewComponentProps {
   onJsExecuted?: () => void; // callback when JS is executed
   showBackButton?: boolean; // Enable web navigation back button
   onNavigationStateChange?: (canGoBack: boolean) => void; // Callback for web navigation state
+  onPageNavigated?: (url: string) => void; // Callback when page URL changes (for inactivity return)
 }
 
 export interface WebViewComponentRef {
@@ -42,7 +43,8 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   jsToExecute,
   onJsExecuted,
   showBackButton = false,
-  onNavigationStateChange
+  onNavigationStateChange,
+  onPageNavigated
 }, ref) => {
   const navigation = useNavigation<NavigationProp>();
   const webViewRef = useRef<WebView>(null);
@@ -344,7 +346,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
             {/* Footer */}
             <Text style={styles.footerText}>
-              Version 1.2.5 • by Rushb
+              Version 1.2.6 • by Rushb
             </Text>
           </Animated.View>
         </ScrollView>
@@ -429,6 +431,10 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           // Track web navigation state (for back button)
           if (showBackButton && onNavigationStateChange) {
             onNavigationStateChange(navState.canGoBack);
+          }
+          // Report URL changes for inactivity return feature
+          if (onPageNavigated && navState.url) {
+            onPageNavigated(navState.url);
           }
         }}
 

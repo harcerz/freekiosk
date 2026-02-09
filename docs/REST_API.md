@@ -276,10 +276,10 @@ Get current auto-brightness status.
 }
 ```
 
-#### `POST /api/screen/on`
+#### `GET|POST /api/screen/on`
 Turn screen on / wake device.
 
-#### `POST /api/screen/off`
+#### `GET|POST /api/screen/off`
 Turn screen off.
 
 > ⚠️ **Device Owner Required for Full Screen Control**
@@ -305,13 +305,13 @@ Turn screen off.
 > 
 > To enable Device Owner mode, see [Installation Guide](INSTALL.md#advanced-install-device-owner-mode).
 
-#### `POST /api/screensaver/on`
+#### `GET|POST /api/screensaver/on`
 Activate screensaver mode.
 
-#### `POST /api/screensaver/off`
+#### `GET|POST /api/screensaver/off`
 Deactivate screensaver mode.
 
-#### `POST /api/reload`
+#### `GET|POST /api/reload`
 Reload the current WebView page.
 
 #### `POST /api/url`
@@ -320,7 +320,7 @@ Navigate to a new URL.
 { "url": "https://example.com" }
 ```
 
-#### `POST /api/wake`
+#### `GET|POST /api/wake`
 Wake from screensaver.
 
 #### `POST /api/tts`
@@ -347,7 +347,7 @@ Execute JavaScript in WebView.
 { "code": "alert('Hello!')" }
 ```
 
-#### `POST /api/clearCache`
+#### `GET|POST /api/clearCache`
 Clear WebView cache and reload.
 
 #### `POST /api/app/launch`
@@ -356,8 +356,8 @@ Launch an external app.
 { "package": "com.spotify.music" }
 ```
 
-#### `POST /api/reboot`
-Reboot device (requires Device Owner mode).
+#### `GET|POST /api/reboot`
+Reboot device (requires Device Owner mode). Executed natively without JS bridge dependency.
 
 ---
 
@@ -373,29 +373,29 @@ Play audio from URL.
 }
 ```
 
-#### `POST /api/audio/stop`
+#### `GET|POST /api/audio/stop`
 Stop currently playing audio.
 
-#### `POST /api/audio/beep`
+#### `GET|POST /api/audio/beep`
 Play a short beep sound.
 
 ---
 
-### Remote Control - Android TV (POST)
+### Remote Control - Android TV (GET or POST)
 
 Perfect for controlling Android TV devices or navigating apps.
 
 | Endpoint | Key |
 |----------|-----|
-| `POST /api/remote/up` | D-pad Up |
-| `POST /api/remote/down` | D-pad Down |
-| `POST /api/remote/left` | D-pad Left |
-| `POST /api/remote/right` | D-pad Right |
-| `POST /api/remote/select` | Select/Enter |
-| `POST /api/remote/back` | Back |
-| `POST /api/remote/home` | Home |
-| `POST /api/remote/menu` | Menu |
-| `POST /api/remote/playpause` | Play/Pause |
+| `GET\|POST /api/remote/up` | D-pad Up |
+| `GET\|POST /api/remote/down` | D-pad Down |
+| `GET\|POST /api/remote/left` | D-pad Left |
+| `GET\|POST /api/remote/right` | D-pad Right |
+| `GET\|POST /api/remote/select` | Select/Enter |
+| `GET\|POST /api/remote/back` | Back |
+| `GET\|POST /api/remote/home` | Home |
+| `GET\|POST /api/remote/menu` | Menu |
+| `GET\|POST /api/remote/playpause` | Play/Pause |
 
 ---
 

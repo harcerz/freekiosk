@@ -22,6 +22,9 @@ import android.database.sqlite.SQLiteDatabase
 import android.content.ContentValues
 import android.view.KeyEvent
 import android.content.IntentFilter
+import android.os.Build
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 
 class MainActivity : ReactActivity() {
 
@@ -153,19 +156,13 @@ class MainActivity : ReactActivity() {
 
   private fun isKioskEnabled(): Boolean {
     return try {
-      val prefs = getSharedPreferences("RCTAsyncLocalStorage", Context.MODE_PRIVATE)
-      val value = prefs.getString("@kiosk_enabled", null)
+      val value = getAsyncStorageValue("@kiosk_enabled", "false")
 
       DebugLog.d("MainActivity", "Read kiosk preference: $value")
 
-      if (value == null) {
-        DebugLog.d("MainActivity", "No preference found, defaulting to OFF")
-        false
-      } else {
-        val enabled = value == "true"
-        DebugLog.d("MainActivity", "Kiosk enabled: $enabled")
-        enabled
-      }
+      val enabled = value == "true"
+      DebugLog.d("MainActivity", "Kiosk enabled: $enabled")
+      enabled
     } catch (e: Exception) {
       DebugLog.errorProduction("MainActivity", "Error reading preference: ${e.message}")
       false
@@ -213,24 +210,43 @@ class MainActivity : ReactActivity() {
     if (!devicePolicyManager.isDeviceOwnerApp(packageName)) return
 
     try {
-      // Read settings from AsyncStorage (SharedPreferences)
-      val prefs = getSharedPreferences("RKStorage", Context.MODE_PRIVATE)
-      val allowPowerButtonValue = prefs.getString("@kiosk_allow_power_button", null)
+      // Read settings from AsyncStorage v2 database
+      val allowPowerButtonValue = getAsyncStorageValue("@kiosk_allow_power_button", "false")
       val allowPowerButton = allowPowerButtonValue == "true"
-      val allowNotificationsValue = prefs.getString("@kiosk_allow_notifications", null)
+      val allowNotificationsValue = getAsyncStorageValue("@kiosk_allow_notifications", "false")
       val allowNotifications = allowNotificationsValue == "true"
       
       // Configurer les features Lock Task based on settings
       if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
         var lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+        
+        // Bloquer les fonctionnalités système qui permettent de sortir du kiosk
+        lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD
+        lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_HOME
+        lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW  // Bloque le menu Recents/multitâche Samsung
+        
         if (allowPowerButton) {
           lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
         }
         if (allowNotifications) {
           lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
         }
+        
+        // Pour Android 9+ (API 28+), bloquer le démarrage d'activités en arrière-plan
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+          lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_BLOCK_ACTIVITY_START_IN_TASK
+        }
+        
         devicePolicyManager.setLockTaskFeatures(adminComponent, lockTaskFeatures)
         DebugLog.d("MainActivity", "Lock task features set: powerButton=$allowPowerButton, notifications=$allowNotifications (flags=$lockTaskFeatures)")
+      }
+      
+      // Désactiver le keyguard (écran de verrouillage) pour empêcher les menus Samsung
+      try {
+        devicePolicyManager.setKeyguardDisabled(adminComponent, true)
+        DebugLog.d("MainActivity", "Keyguard disabled successfully")
+      } catch (e: Exception) {
+        DebugLog.w("MainActivity", "Failed to disable keyguard: ${e.message}")
       }
 
       val samsungUpdateApps = arrayOf(
@@ -389,14 +405,27 @@ class MainActivity : ReactActivity() {
   }
 
   private fun hideSystemUI() {
-    window.decorView.systemUiVisibility = (
-      View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-      or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-      or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-      or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-      or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-      or View.SYSTEM_UI_FLAG_FULLSCREEN
-    )
+    // Pour Android 11+ (API 30+), utiliser la nouvelle API WindowInsetsController
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      window.insetsController?.apply {
+        hide(WindowInsets.Type.systemBars())
+        hide(WindowInsets.Type.statusBars())
+        hide(WindowInsets.Type.navigationBars())
+        systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      }
+    } else {
+      // Pour Android 10 et inférieur, utiliser l'ancienne API
+      @Suppress("DEPRECATION")
+      window.decorView.systemUiVisibility = (
+        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        or View.SYSTEM_UI_FLAG_FULLSCREEN
+        or View.SYSTEM_UI_FLAG_LOW_PROFILE  // Cache les contrôles système (menu Samsung)
+      )
+    }
   }
 
   // Volume Up 5-tap tracking
@@ -476,20 +505,20 @@ class MainActivity : ReactActivity() {
 
   /**
    * Read a value from AsyncStorage (React Native SQLite database)
-   * AsyncStorage uses SQLite database "RKStorage" with table "catalystLocalStorage"
+   * AsyncStorage v2.x uses database "AsyncStorage" with table "Storage"
    */
   private fun getAsyncStorageValue(key: String, defaultValue: String): String {
     return try {
-      val dbPath = getDatabasePath("RKStorage").absolutePath
+      val dbPath = getDatabasePath("AsyncStorage").absolutePath
       val db = android.database.sqlite.SQLiteDatabase.openDatabase(dbPath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
       
       val cursor = db.rawQuery(
-        "SELECT value FROM catalystLocalStorage WHERE key = ?",
+        "SELECT value FROM Storage WHERE key = ?",
         arrayOf(key)
       )
       
       val value = if (cursor.moveToFirst()) {
-        cursor.getString(0)
+        cursor.getString(0) ?: defaultValue
       } else {
         defaultValue
       }
@@ -517,9 +546,9 @@ class MainActivity : ReactActivity() {
 
   private fun readExternalAppConfig() {
     try {
-      val prefs = getSharedPreferences("RCTAsyncLocalStorage", Context.MODE_PRIVATE)
-      val displayMode = prefs.getString("@kiosk_display_mode", "webview")
-      externalAppPackage = prefs.getString("@kiosk_external_app_package", null)
+      val displayMode = getAsyncStorageValue("@kiosk_display_mode", "webview")
+      externalAppPackage = getAsyncStorageValue("@kiosk_external_app_package", "")
+      if (externalAppPackage.isNullOrEmpty()) externalAppPackage = null
       isExternalAppMode = displayMode == "external_app"
       isDeviceOwner = devicePolicyManager.isDeviceOwnerApp(packageName)
       
@@ -594,118 +623,131 @@ class MainActivity : ReactActivity() {
       }
     }
     
-    // PIN verified - Apply configuration directly to AsyncStorage SQLite database
-    // AsyncStorage uses SQLite database "RKStorage" with table "catalystLocalStorage"
-    val db = openAsyncStorageDb()
-    if (db == null) {
-      android.util.Log.e("FreeKiosk-ADB", "Failed to open database")
-      showAdbToast("❌ ADB Config: Database error")
-      return false
-    }
+    // PIN verified - Save configuration to SharedPreferences as "pending config"
+    // React Native (KioskScreen) will read this on startup and apply to AsyncStorage
+    // This avoids Room/AsyncStorage v2 database compatibility issues
+    val pendingConfig = getSharedPreferences("FreeKioskPendingConfig", Context.MODE_PRIVATE)
+    val editor = pendingConfig.edit()
+    editor.clear() // Clear any previous pending config
+    
+    android.util.Log.i("FreeKiosk-ADB", "Writing pending config to SharedPreferences...")
     
     try {
-      db.beginTransaction()
-      android.util.Log.i("FreeKiosk-ADB", "Writing to RKStorage database...")
     
       // Handle full JSON config
       if (configJson != null) {
         try {
           val config = org.json.JSONObject(configJson)
-          applyJsonConfigToDb(db, config)
+          applyJsonConfigToPrefs(editor, config)
         } catch (e: Exception) {
           android.util.Log.e("FreeKiosk-ADB", "Invalid JSON: ${e.message}")
           showAdbToast("❌ ADB Config: Invalid JSON")
-          db.endTransaction()
-          db.close()
           return false
+        }
       }
-    }
     
     // Handle individual parameters (override JSON if both provided)
+    // Always include PIN in pending config so it's visible in Settings UI
+    if (pin != null) {
+      editor.putString("@kiosk_pin", pin)
+    }
+
     if (lockPackage != null) {
       // Verify package exists
       try {
         packageManager.getPackageInfo(lockPackage, 0)
-        setAsyncStorageValue(db, "@kiosk_external_app_package", lockPackage)
-        setAsyncStorageValue(db, "@kiosk_display_mode", "external_app")
+        editor.putString("@kiosk_external_app_package", lockPackage)
+        editor.putString("@kiosk_display_mode", "external_app")
       } catch (e: Exception) {
         android.util.Log.w("FreeKiosk-ADB", "Package not found: $lockPackage")
         showAdbToast("❌ ADB Config: Package not found: $lockPackage")
-        db.endTransaction()
-        db.close()
         return false
       }
     }
     
     if (url != null) {
-      setAsyncStorageValue(db, "@kiosk_url", url)
-      setAsyncStorageValue(db, "@kiosk_display_mode", "webview")
+      editor.putString("@kiosk_url", url)
+      editor.putString("@kiosk_display_mode", "webview")
     }
     
     // Handle additional options - only set if explicitly provided
     if (intent.hasExtra("kiosk_enabled")) {
       val kioskEnabled = intent.getBooleanExtra("kiosk_enabled", false)
-      setAsyncStorageValue(db, "@kiosk_enabled", kioskEnabled.toString())
+      editor.putString("@kiosk_enabled", kioskEnabled.toString())
     }
     
+    // Handle auto_launch as string or auto_start as boolean
     intent.getStringExtra("auto_launch")?.let {
-      setAsyncStorageValue(db, "@kiosk_auto_launch", it)
+      editor.putString("@kiosk_auto_launch", it)
+    }
+    if (intent.hasExtra("auto_start")) {
+      val autoStart = intent.getBooleanExtra("auto_start", false)
+      editor.putString("@kiosk_auto_launch", autoStart.toString())
     }
     
     intent.getStringExtra("screensaver_enabled")?.let {
-      setAsyncStorageValue(db, "@screensaver_enabled", it)
+      editor.putString("@screensaver_enabled", it)
     }
     
     intent.getStringExtra("auto_relaunch")?.let {
-      setAsyncStorageValue(db, "@kiosk_auto_relaunch_app", it)
+      editor.putString("@kiosk_auto_relaunch_app", it)
+    }
+    
+    // test_mode: "true" = show return button with timer, "false" = immediate return (production)
+    intent.getStringExtra("test_mode")?.let {
+      editor.putString("@kiosk_external_app_test_mode", it)
+      // Also set back_button_mode: test_mode=false → immediate, test_mode=true → test
+      if (it == "false") {
+        editor.putString("@kiosk_back_button_mode", "immediate")
+      } else {
+        editor.putString("@kiosk_back_button_mode", "test")
+      }
+    }
+    
+    // back_button_mode: "test" = stay on FreeKiosk, "timer" = countdown then relaunch, "immediate" = relaunch immediately
+    intent.getStringExtra("back_button_mode")?.let {
+      editor.putString("@kiosk_back_button_mode", it)
     }
     
     intent.getStringExtra("status_bar")?.let {
-      setAsyncStorageValue(db, "@kiosk_status_bar_enabled", it)
+      editor.putString("@kiosk_status_bar_enabled", it)
     }
     
     intent.getStringExtra("rest_api_enabled")?.let {
-      setAsyncStorageValue(db, "@kiosk_rest_api_enabled", it)
+      editor.putString("@kiosk_rest_api_enabled", it)
     }
     
     intent.getStringExtra("rest_api_port")?.let {
-      setAsyncStorageValue(db, "@kiosk_rest_api_port", it)
+      editor.putString("@kiosk_rest_api_port", it)
     }
     
     intent.getStringExtra("rest_api_key")?.let {
-      setAsyncStorageValue(db, "@kiosk_rest_api_key", it)
+      editor.putString("@kiosk_rest_api_key", it)
     }
     
     intent.getStringExtra("pin_mode")?.let {
       // Only accept valid values: "numeric" or "alphanumeric"
       if (it == "numeric" || it == "alphanumeric") {
-        setAsyncStorageValue(db, "@kiosk_pin_mode", it)
+        editor.putString("@kiosk_pin_mode", it)
       }
     }
     
-    // Commit all changes to database
-    db.setTransactionSuccessful()
-    db.endTransaction()
+    // Mark that there is pending config
+    editor.putBoolean("has_pending_config", true)
     
-    // Force WAL checkpoint to sync to disk BEFORE killing process
-    try {
-      db.rawQuery("PRAGMA wal_checkpoint(FULL)", null).close()
-      val dbFile = getDatabasePath("RKStorage")
-      if (dbFile.exists()) {
-        java.io.RandomAccessFile(dbFile, "rw").use { raf ->
-          raf.fd.sync()
-        }
-      }
-    } catch (e: Exception) {
-      android.util.Log.w("FreeKiosk-ADB", "Database sync failed: ${e.message}")
+    // Use commit() (synchronous) instead of apply() to ensure data is written before process kill
+    editor.commit()
+    
+    // Verify
+    val verifyPrefs = getSharedPreferences("FreeKioskPendingConfig", Context.MODE_PRIVATE)
+    val allEntries = verifyPrefs.all
+    android.util.Log.i("FreeKiosk-ADB", "Pending config verification - ${allEntries.size} entries:")
+    for ((key, value) in allEntries) {
+      android.util.Log.i("FreeKiosk-ADB", "  Pending: $key = $value")
     }
-    
-    db.close()
     
     } catch (e: Exception) {
       android.util.Log.e("FreeKiosk-ADB", "Error applying config: ${e.message}")
-      try { db.endTransaction() } catch (ex: Exception) {}
-      try { db.close() } catch (ex: Exception) {}
       showAdbToast("❌ ADB Config: Error: ${e.message}")
       return false
     }
@@ -730,21 +772,18 @@ class MainActivity : ReactActivity() {
       // Broadcast that restart is starting
       sendBroadcast(Intent("com.freekiosk.ADB_CONFIG_RESTARTING"))
       
-      // Create restart intent
+      // Create restart intent - FreeKiosk will restart, load settings (including
+      // lock_package), activate kiosk mode, then launch the external app via 
+      // KioskScreen.loadSettings() → launchExternalApp() → AppLauncherModule
+      // which will emit the EXTERNAL_APP_LAUNCHED broadcast
       val restartIntent = packageManager.getLaunchIntentForPackage(packageName)
       restartIntent?.apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-        
-        // Pass auto_start flag to the new instance so it can launch the external app
-        // AFTER settings are loaded and kiosk mode is activated
-        if (intent.getBooleanExtra("auto_start", false) && lockPackage != null) {
-          putExtra("adb_auto_start", true)
-          android.util.Log.i("FreeKiosk-ADB", "Will auto-start external app after restart")
-        }
       }
       
-      // Don't launch external app here - let FreeKiosk restart and handle it properly
-      // This ensures kiosk mode is activated first, then app is launched
+      if (intent.getBooleanExtra("auto_start", false) && lockPackage != null) {
+        android.util.Log.i("FreeKiosk-ADB", "App will auto-start after restart via normal loadSettings flow")
+      }
       
       // Start the new instance
       if (restartIntent != null) {
@@ -754,7 +793,7 @@ class MainActivity : ReactActivity() {
       // Kill immediately
       android.os.Process.killProcess(android.os.Process.myPid())
       System.exit(0)
-    }, 500) // Wait 500ms to ensure database sync
+    }, 500) // Wait 500ms for toast to show
     
     return true
   }
@@ -786,11 +825,12 @@ class MainActivity : ReactActivity() {
   
   /**
    * Open the AsyncStorage SQLite database (create if not exists)
-   * AsyncStorage uses database name "RKStorage" with table "catalystLocalStorage"
+   * AsyncStorage v2.x uses database name "AsyncStorage" with table "Storage"
+   * (v1.x used "RKStorage" with table "catalystLocalStorage")
    */
   private fun openAsyncStorageDb(): SQLiteDatabase? {
     return try {
-      val dbPath = getDatabasePath("RKStorage").absolutePath
+      val dbPath = getDatabasePath("AsyncStorage").absolutePath
       
       // Create parent directory if it doesn't exist
       val dbFile = java.io.File(dbPath)
@@ -803,17 +843,23 @@ class MainActivity : ReactActivity() {
       // Open or create database
       val db = SQLiteDatabase.openOrCreateDatabase(dbPath, null)
       
-      // Ensure the catalystLocalStorage table exists (same schema as AsyncStorage uses)
+      // Ensure the Storage table exists (same schema as AsyncStorage v2 Room uses)
       db.execSQL("""
-        CREATE TABLE IF NOT EXISTS catalystLocalStorage (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL
+        CREATE TABLE IF NOT EXISTS Storage (
+          `key` TEXT NOT NULL,
+          `value` TEXT,
+          PRIMARY KEY(`key`)
         )
       """.trimIndent())
       
+      // Also set the Room version so Room doesn't try to recreate/migrate
+      db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY, identity_hash TEXT)")
+      // Set version to 2 (DATABASE_VERSION in StorageSupplier)
+      db.version = 2
+      
       db
     } catch (e: Exception) {
-      android.util.Log.e("FreeKiosk-ADB", "Failed to open RKStorage DB: ${e.message}")
+      android.util.Log.e("FreeKiosk-ADB", "Failed to open AsyncStorage DB: ${e.message}")
       null
     }
   }
@@ -826,13 +872,13 @@ class MainActivity : ReactActivity() {
       put("key", key)
       put("value", value)
     }
-    db.insertWithOnConflict("catalystLocalStorage", null, contentValues, SQLiteDatabase.CONFLICT_REPLACE)
+    db.insertWithOnConflict("Storage", null, contentValues, SQLiteDatabase.CONFLICT_REPLACE)
   }
 
   /**
-   * Apply full JSON configuration to database
+   * Apply full JSON configuration to SharedPreferences (pending config)
    */
-  private fun applyJsonConfigToDb(db: SQLiteDatabase, config: org.json.JSONObject) {
+  private fun applyJsonConfigToPrefs(editor: android.content.SharedPreferences.Editor, config: org.json.JSONObject) {
     // Map of JSON keys to AsyncStorage keys
     val keyMapping = mapOf(
       "url" to "@kiosk_url",
@@ -860,13 +906,13 @@ class MainActivity : ReactActivity() {
     for ((jsonKey, storageKey) in keyMapping) {
       if (config.has(jsonKey)) {
         val value = config.get(jsonKey)
-        setAsyncStorageValue(db, storageKey, value.toString())
+        editor.putString(storageKey, value.toString())
       }
     }
     
     // Handle lock_package -> also set display_mode
     if (config.has("lock_package") && !config.has("display_mode")) {
-      setAsyncStorageValue(db, "@kiosk_display_mode", "external_app")
+      editor.putString("@kiosk_display_mode", "external_app")
     }
   }
   
@@ -900,19 +946,13 @@ class MainActivity : ReactActivity() {
   }
   
   /**
-   * Save PIN directly to AsyncStorage database for UI
+   * Save PIN directly to pending config SharedPreferences for UI
    */
   private fun savePinDirectly(pin: String) {
     try {
-      val db = openAsyncStorageDb()
-      if (db != null) {
-        db.beginTransaction()
-        setAsyncStorageValue(db, "@kiosk_pin", pin)
-        db.setTransactionSuccessful()
-        db.endTransaction()
-        db.close()
-        android.util.Log.i("FreeKiosk-ADB", "PIN saved to database")
-      }
+      val pendingConfig = getSharedPreferences("FreeKioskPendingConfig", Context.MODE_PRIVATE)
+      pendingConfig.edit().putString("@kiosk_pin", pin).commit()
+      android.util.Log.i("FreeKiosk-ADB", "PIN saved to pending config")
     } catch (e: Exception) {
       android.util.Log.e("FreeKiosk-ADB", "Failed to save PIN: ${e.message}")
     }
@@ -932,10 +972,9 @@ class MainActivity : ReactActivity() {
         return inputHash == storedHash
       }
       
-      // Fallback: check legacy plaintext PIN
-      val asyncPrefs = getSharedPreferences("RCTAsyncLocalStorage", Context.MODE_PRIVATE)
-      val legacyPin = asyncPrefs.getString("@kiosk_pin", null)
-      if (legacyPin != null) {
+      // Fallback: check legacy plaintext PIN from AsyncStorage v2
+      val legacyPin = getAsyncStorageValue("@kiosk_pin", "")
+      if (legacyPin.isNotEmpty()) {
         if (pin == legacyPin) {
           // Migrate to hashed storage
           saveAdbPinHash(pin)

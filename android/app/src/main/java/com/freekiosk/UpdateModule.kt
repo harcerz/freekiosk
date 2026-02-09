@@ -241,11 +241,114 @@ class UpdateModule(reactContext: ReactApplicationContext) : ReactContextBaseJava
     }
 
     private fun installApk(uri: Uri) {
+        try {
+            // Try silent install if in Device Owner mode
+            val dpm = reactApplicationContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val adminComponent = ComponentName(reactApplicationContext, DeviceAdminReceiver::class.java)
+            
+            if (dpm.isDeviceOwnerApp(reactApplicationContext.packageName)) {
+                android.util.Log.d("UpdateModule", "Device Owner detected - attempting silent install")
+                
+                // Convert content:// URI to file:// path for PackageInstaller
+                val downloadManager = reactApplicationContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                val query = DownloadManager.Query().setFilterById(downloadId)
+                val cursor = downloadManager.query(query)
+                
+                if (cursor.moveToFirst()) {
+                    val localUriIndex = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+                    val localUriString = cursor.getString(localUriIndex)
+                    val file = File(Uri.parse(localUriString).path ?: "")
+                    cursor.close()
+                    
+                    if (file.exists()) {
+                        android.util.Log.d("UpdateModule", "Installing from file: ${file.absolutePath}")
+                        
+                        // Use DevicePolicyManager to install silently
+                        val packageInstaller = reactApplicationContext.packageManager.packageInstaller
+                        val params = android.content.pm.PackageInstaller.SessionParams(
+                            android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL
+                        )
+                        
+                        val sessionId = packageInstaller.createSession(params)
+                        val session = packageInstaller.openSession(sessionId)
+                        
+                        session.openWrite("package", 0, -1).use { output ->
+                            file.inputStream().use { input ->
+                                input.copyTo(output)
+                            }
+                            session.fsync(output)
+                        }
+                        
+                        // Create install intent
+                        val intent = Intent(reactApplicationContext, UpdateInstallReceiver::class.java)
+                        val pendingIntent = android.app.PendingIntent.getBroadcast(
+                            reactApplicationContext,
+                            0,
+                            intent,
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                android.app.PendingIntent.FLAG_MUTABLE
+                            } else {
+                                0
+                            }
+                        )
+                        
+                        session.commit(pendingIntent.intentSender)
+                        session.close()
+                        
+                        android.util.Log.d("UpdateModule", "Silent install initiated")
+                        return
+                    }
+                }
+                
+                android.util.Log.w("UpdateModule", "Failed to get file path, falling back to normal install")
+            } else {
+                android.util.Log.d("UpdateModule", "Not in Device Owner mode - using normal install")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("UpdateModule", "Silent install failed: ${e.message}", e)
+            android.util.Log.d("UpdateModule", "Falling back to normal install method")
+        }
+        
+        // Fallback to normal install method
+        android.util.Log.d("UpdateModule", "Starting normal APK install from URI: $uri")
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
         reactApplicationContext.startActivity(intent)
+        
+        // Monitor installation completion for auto-restart (non-Device Owner mode)
+        // We can't get a callback for ACTION_VIEW install, so we monitor package changes
+        monitorInstallationCompletion()
+    }
+    
+    private fun monitorInstallationCompletion() {
+        // Register a receiver to detect when our package is replaced
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        
+        val installMonitor = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val packageName = intent?.data?.schemeSpecificPart
+                if (packageName == reactApplicationContext.packageName) {
+                    android.util.Log.d("UpdateModule", "Package replaced detected - app will restart automatically")
+                    // The system will restart our app automatically after package replacement
+                    try {
+                        reactApplicationContext.unregisterReceiver(this)
+                    } catch (e: Exception) {
+                        // Already unregistered
+                    }
+                }
+            }
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            reactApplicationContext.registerReceiver(installMonitor, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            reactApplicationContext.registerReceiver(installMonitor, filter)
+        }
     }
 
     @ReactMethod
@@ -256,5 +359,48 @@ class UpdateModule(reactContext: ReactApplicationContext) : ReactContextBaseJava
     @ReactMethod
     fun removeListeners(count: Int) {
         // Required for EventEmitter
+    }
+}
+
+/**
+ * BroadcastReceiver for silent installation results
+ */
+class UpdateInstallReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context?, intent: Intent?) {
+        val status = intent?.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, -1)
+        when (status) {
+            android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                android.util.Log.d("UpdateInstallReceiver", "Installation requires user action")
+                val confirmIntent = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+                if (confirmIntent != null) {
+                    confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context?.startActivity(confirmIntent)
+                }
+            }
+            android.content.pm.PackageInstaller.STATUS_SUCCESS -> {
+                android.util.Log.d("UpdateInstallReceiver", "Installation succeeded - restarting app")
+                // Restart the app after successful installation
+                context?.let { ctx ->
+                    val packageManager = ctx.packageManager
+                    val launchIntent = packageManager.getLaunchIntentForPackage(ctx.packageName)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            ctx.startActivity(launchIntent)
+                        }, 1000) // Wait 1 second to ensure installation is fully complete
+                    }
+                }
+            }
+            android.content.pm.PackageInstaller.STATUS_FAILURE,
+            android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED,
+            android.content.pm.PackageInstaller.STATUS_FAILURE_BLOCKED,
+            android.content.pm.PackageInstaller.STATUS_FAILURE_CONFLICT,
+            android.content.pm.PackageInstaller.STATUS_FAILURE_INCOMPATIBLE,
+            android.content.pm.PackageInstaller.STATUS_FAILURE_INVALID,
+            android.content.pm.PackageInstaller.STATUS_FAILURE_STORAGE -> {
+                val message = intent.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE)
+                android.util.Log.e("UpdateInstallReceiver", "Installation failed: $message (status: $status)")
+            }
+        }
     }
 }

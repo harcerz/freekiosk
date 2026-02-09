@@ -38,7 +38,9 @@ import {
   AdvancedTab,
 } from './tabs';
 import { RecurringEventEditor, OneTimeEventEditor } from '../../components/settings';
+import ScreenScheduleRuleEditor from '../../components/settings/ScreenScheduleRuleEditor';
 import { ScheduledEvent } from '../../types/planner';
+import { ScreenScheduleRule } from '../../types/screenScheduler';
 
 const { KioskModule } = NativeModules;
 
@@ -95,6 +97,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [showAppPicker, setShowAppPicker] = useState<boolean>(false);
   const [loadingApps, setLoadingApps] = useState<boolean>(false);
   const [hasOverlayPermission, setHasOverlayPermission] = useState<boolean>(false);
+  const [hasUsageStatsPermission, setHasUsageStatsPermission] = useState<boolean>(false);
   const [isDeviceOwner, setIsDeviceOwner] = useState<boolean>(false);
   const [statusBarEnabled, setStatusBarEnabled] = useState<boolean>(false);
   const [statusBarOnOverlay, setStatusBarOnOverlay] = useState<boolean>(true);
@@ -137,6 +140,19 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [currentLightLevel, setCurrentLightLevel] = useState<number>(0);
   const [hasLightSensor, setHasLightSensor] = useState<boolean>(true);
   
+  // Screen Sleep Scheduler states
+  const [screenSchedulerEnabled, setScreenSchedulerEnabled] = useState<boolean>(false);
+  const [screenSchedulerRules, setScreenSchedulerRules] = useState<ScreenScheduleRule[]>([]);
+  const [screenSchedulerWakeOnTouch, setScreenSchedulerWakeOnTouch] = useState<boolean>(true);
+  const [showScheduleRuleEditor, setShowScheduleRuleEditor] = useState<boolean>(false);
+  const [editingScheduleRule, setEditingScheduleRule] = useState<ScreenScheduleRule | null>(null);
+  
+  // Inactivity Return to Home states
+  const [inactivityReturnEnabled, setInactivityReturnEnabled] = useState<boolean>(false);
+  const [inactivityReturnDelay, setInactivityReturnDelay] = useState<string>('60');
+  const [inactivityReturnResetOnNav, setInactivityReturnResetOnNav] = useState<boolean>(true);
+  const [inactivityReturnClearCache, setInactivityReturnClearCache] = useState<boolean>(false);
+  
   // Update states
   const [checkingUpdate, setCheckingUpdate] = useState<boolean>(false);
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
@@ -148,6 +164,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     loadSettings();
     loadCertificates();
     checkOverlayPermission();
+    checkUsageStatsPermission();
     checkDeviceOwner();
     loadCurrentVersion();
     checkLightSensor();
@@ -195,6 +212,25 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       setHasOverlayPermission(canDraw);
     } catch (error) {
       // Silent fail
+    }
+  };
+
+  const checkUsageStatsPermission = async () => {
+    try {
+      const hasPermission = await KioskModule.hasUsageStatsPermission();
+      setHasUsageStatsPermission(hasPermission);
+    } catch (error) {
+      setHasUsageStatsPermission(false);
+    }
+  };
+
+  const requestUsageStatsPermission = async () => {
+    try {
+      await KioskModule.requestUsageStatsPermission();
+      // Re-check after a delay (user needs to toggle in system settings)
+      setTimeout(() => checkUsageStatsPermission(), 2000);
+    } catch (error) {
+      console.error('Error requesting usage stats permission:', error);
     }
   };
 
@@ -287,6 +323,11 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const savedAutoBrightnessMin = await StorageService.getAutoBrightnessMin();
     const savedAutoBrightnessMax = await StorageService.getAutoBrightnessMax();
 
+    // Screen Sleep Scheduler settings
+    const savedScreenSchedulerEnabled = await StorageService.getScreenSchedulerEnabled();
+    const savedScreenSchedulerRules = await StorageService.getScreenSchedulerRules();
+    const savedScreenSchedulerWakeOnTouch = await StorageService.getScreenSchedulerWakeOnTouch();
+
     setDisplayMode(savedDisplayMode);
     setExternalAppPackage(savedExternalAppPackage ?? '');
     setAutoRelaunchApp(savedAutoRelaunchApp);
@@ -326,6 +367,19 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     setAutoBrightnessEnabled(savedAutoBrightnessEnabled);
     setAutoBrightnessMin(savedAutoBrightnessMin);
     setAutoBrightnessMax(savedAutoBrightnessMax);
+    setScreenSchedulerEnabled(savedScreenSchedulerEnabled);
+    setScreenSchedulerRules(savedScreenSchedulerRules);
+    setScreenSchedulerWakeOnTouch(savedScreenSchedulerWakeOnTouch);
+
+    // Inactivity Return to Home settings
+    const savedInactivityReturnEnabled = await StorageService.getInactivityReturnEnabled();
+    const savedInactivityReturnDelay = await StorageService.getInactivityReturnDelay();
+    const savedInactivityReturnResetOnNav = await StorageService.getInactivityReturnResetOnNav();
+    const savedInactivityReturnClearCache = await StorageService.getInactivityReturnClearCache();
+    setInactivityReturnEnabled(savedInactivityReturnEnabled);
+    setInactivityReturnDelay(String(savedInactivityReturnDelay));
+    setInactivityReturnResetOnNav(savedInactivityReturnResetOnNav);
+    setInactivityReturnClearCache(savedInactivityReturnClearCache);
   };
 
   const loadCertificates = async (): Promise<void> => {
@@ -549,7 +603,11 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     try {
       await UpdateModule.downloadAndInstall(updateData.downloadUrl, updateData.version);
       setDownloading(false);
-      Alert.alert('✅ Download Complete', 'The update has been downloaded. Installation in progress...');
+      Alert.alert(
+        '✅ Update Ready',
+        'The update has been downloaded successfully. The installation screen should appear shortly.\n\nIf nothing happens:\n• Check notification panel\n• Look for "Package installer"\n• Grant installation permission if prompted',
+        [{ text: 'OK' }]
+      );
     } catch (error: any) {
       setDownloading(false);
       Alert.alert('Error', `Download failed:\n\n${error?.message || error?.toString() || 'Unknown error'}`);
@@ -680,11 +738,25 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       await StorageService.saveAutoBrightnessEnabled(autoBrightnessEnabled);
       await StorageService.saveAutoBrightnessMin(autoBrightnessMin);
       await StorageService.saveAutoBrightnessMax(autoBrightnessMax);
+      
+      // Screen Sleep Scheduler settings
+      await StorageService.saveScreenSchedulerEnabled(screenSchedulerEnabled);
+      await StorageService.saveScreenSchedulerRules(screenSchedulerRules);
+      await StorageService.saveScreenSchedulerWakeOnTouch(screenSchedulerWakeOnTouch);
+
+      // Inactivity Return to Home settings
+      await StorageService.saveInactivityReturnEnabled(inactivityReturnEnabled);
+      const returnDelay = parseInt(inactivityReturnDelay, 10);
+      await StorageService.saveInactivityReturnDelay(isNaN(returnDelay) ? 60 : Math.max(5, Math.min(3600, returnDelay)));
+      await StorageService.saveInactivityReturnResetOnNav(inactivityReturnResetOnNav);
+      await StorageService.saveInactivityReturnClearCache(inactivityReturnClearCache);
     } else {
       await StorageService.saveAutoReload(false);
       await StorageService.saveKioskEnabled(kioskEnabled);
       await StorageService.saveScreensaverEnabled(false);
       await StorageService.saveAutoBrightnessEnabled(false);
+      await StorageService.saveScreenSchedulerEnabled(false);
+      await StorageService.saveInactivityReturnEnabled(false);
     }
 
     await StorageService.saveAutoLaunch(autoLaunchEnabled);
@@ -852,6 +924,17 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
               setAutoBrightnessEnabled(false);
               setAutoBrightnessMin(0.1);
               setAutoBrightnessMax(1.0);
+              
+              // Reset screen scheduler state
+              setScreenSchedulerEnabled(false);
+              setScreenSchedulerRules([]);
+              setScreenSchedulerWakeOnTouch(true);
+              
+              // Reset inactivity return state
+              setInactivityReturnEnabled(false);
+              setInactivityReturnDelay('60');
+              setInactivityReturnResetOnNav(true);
+              setInactivityReturnClearCache(false);
 
               try {
                 await KioskModule.stopLockTask();
@@ -976,6 +1059,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             loadingApps={loadingApps}
             hasOverlayPermission={hasOverlayPermission}
             onRequestOverlayPermission={requestOverlayPermission}
+            hasUsageStatsPermission={hasUsageStatsPermission}
+            onRequestUsageStatsPermission={requestUsageStatsPermission}
             isDeviceOwner={isDeviceOwner}
             pin={pin}
             onPinChange={setPin}
@@ -1037,6 +1122,14 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
               setWebViewBackButtonXPercent('2');
               setWebViewBackButtonYPercent('10');
             }}
+            inactivityReturnEnabled={inactivityReturnEnabled}
+            onInactivityReturnEnabledChange={setInactivityReturnEnabled}
+            inactivityReturnDelay={inactivityReturnDelay}
+            onInactivityReturnDelayChange={setInactivityReturnDelay}
+            inactivityReturnResetOnNav={inactivityReturnResetOnNav}
+            onInactivityReturnResetOnNavChange={setInactivityReturnResetOnNav}
+            inactivityReturnClearCache={inactivityReturnClearCache}
+            onInactivityReturnClearCacheChange={setInactivityReturnClearCache}
             onBackToKiosk={() => navigation.navigate('Kiosk')}
           />
         );
@@ -1084,6 +1177,20 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             motionCameraPosition={motionCameraPosition}
             onMotionCameraPositionChange={handleMotionCameraPositionChange}
             availableCameras={availableCameras}
+            screenSchedulerEnabled={screenSchedulerEnabled}
+            onScreenSchedulerEnabledChange={setScreenSchedulerEnabled}
+            screenSchedulerRules={screenSchedulerRules}
+            onScreenSchedulerRulesChange={setScreenSchedulerRules}
+            screenSchedulerWakeOnTouch={screenSchedulerWakeOnTouch}
+            onScreenSchedulerWakeOnTouchChange={setScreenSchedulerWakeOnTouch}
+            onAddScheduleRule={() => {
+              setEditingScheduleRule(null);
+              setShowScheduleRuleEditor(true);
+            }}
+            onEditScheduleRule={(rule: ScreenScheduleRule) => {
+              setEditingScheduleRule(rule);
+              setShowScheduleRuleEditor(true);
+            }}
           />
         );
       
@@ -1291,6 +1398,27 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
         onCancel={() => {
           setShowOneTimeEditor(false);
           setEditingEvent(null);
+        }}
+      />
+
+      {/* Screen Schedule Rule Editor Modal */}
+      <ScreenScheduleRuleEditor
+        visible={showScheduleRuleEditor}
+        rule={editingScheduleRule}
+        onSave={(rule: ScreenScheduleRule) => {
+          if (editingScheduleRule) {
+            // Update existing rule
+            setScreenSchedulerRules(screenSchedulerRules.map(r => r.id === rule.id ? rule : r));
+          } else {
+            // Add new rule
+            setScreenSchedulerRules([...screenSchedulerRules, rule]);
+          }
+          setShowScheduleRuleEditor(false);
+          setEditingScheduleRule(null);
+        }}
+        onCancel={() => {
+          setShowScheduleRuleEditor(false);
+          setEditingScheduleRule(null);
         }}
       />
     </View>

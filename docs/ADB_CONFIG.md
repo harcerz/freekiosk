@@ -84,8 +84,11 @@ adb shell am start -n com.freekiosk/.MainActivity [OPTIONS]
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `--ez kiosk_enabled true` | Boolean | `true` | Enable/disable kiosk mode |
-| `--es auto_launch "true"` | String | - | Auto-launch on boot |
-| `--es auto_relaunch "true"` | String | - | Auto-relaunch if app crashes |
+| `--ez auto_start true` | Boolean | - | Auto-launch the locked app after config |
+| `--es auto_launch "true"` | String | - | Auto-launch on boot (alternative to `auto_start`) |
+| `--es auto_relaunch "true"` | String | - | Auto-relaunch if app crashes/exits |
+| `--es test_mode "false"` | String | `"true"` | `"false"` = production (back button blocked, auto-relaunch on 5-tap). `"true"` = testing (back button allowed, stay on FreeKiosk after 5-tap) |
+| `--es back_button_mode "immediate"` | String | `"test"` | Behavior after 5-tap return: `"test"` (stay on FreeKiosk), `"timer"` (countdown then relaunch), `"immediate"` (instant relaunch). Auto-set by `test_mode` if not specified |
 | `--es status_bar "true"` | String | - | Show custom status bar |
 
 ### Password Options
@@ -122,7 +125,7 @@ private async setupKioskModeUsingFreeKiosk(packageName: string): Promise<void> {
 
   // Start listening for EXTERNAL_APP_LAUNCHED broadcast
   const appLaunchMonitor = this.execAsync(
-    `adb -s ${this.adbTarget} logcat -c && adb -s ${this.adbTarget} logcat | grep -m 1 "EXTERNAL_APP_LAUNCHED: ${packageName}"`
+    `adb -s ${this.adbTarget} logcat -c && adb -s ${this.adbTarget} logcat -s "FreeKiosk-ADB" | grep -m 1 "EXTERNAL_APP_LAUNCHED: ${packageName}"`
   );
 
   // Send configuration command with auto_start
@@ -152,7 +155,7 @@ PIN="1234"
 
 # Monitor logcat for completion marker in background
 adb logcat -c
-adb logcat | grep -m 1 "SETTINGS_LOADED" &
+adb logcat -s "FreeKiosk-ADB" | grep -m 1 "SETTINGS_LOADED" &
 LOGCAT_PID=$!
 
 # Send configuration
@@ -190,7 +193,7 @@ PIN="1234"
 
 # Monitor for external app launch
 adb logcat -c
-adb logcat | grep -m 1 "EXTERNAL_APP_LAUNCHED: $PACKAGE" &
+adb logcat -s "FreeKiosk-ADB" | grep -m 1 "EXTERNAL_APP_LAUNCHED: $PACKAGE" &
 LOGCAT_PID=$!
 
 # Configure and auto-launch
@@ -212,15 +215,18 @@ echo "✅ $PACKAGE is now running and ready!"
 
 ### 1. Cloud Gaming Kiosk
 
-Lock device to a game streaming app with auto-relaunch:
+Lock device to a game streaming app with auto-relaunch (production mode):
 
 ```bash
 adb shell am start -n com.freekiosk/.MainActivity \
     --es lock_package "com.valvesoftware.steamlink" \
     --es pin "1234" \
     --es auto_relaunch "true" \
+    --es test_mode "false" \
     --ez auto_start true
 ```
+
+> **Note**: `test_mode "false"` blocks the back button and sets auto-relaunch on 5-tap return (production behavior). Omit it or set to `"true"` during testing to allow back button and stay on FreeKiosk after 5-tap.
 
 ### 2. Hotel Room Tablet
 
@@ -303,7 +309,8 @@ When using `--es config '{...}'`, the following keys are supported:
   "rest_api_port": "8080",
   "rest_api_key": "your_api_key",
   "allow_power_button": "false",
-  "back_button_mode": "disabled",
+  "back_button_mode": "immediate",
+  "test_mode": "false",
   "default_brightness": "75"
 }
 ```
@@ -333,6 +340,7 @@ adb shell am start -n com.freekiosk/.MainActivity \
     --es lock_package "$PACKAGE" \
     --es pin "$PIN" \
     --es auto_relaunch "true" \
+    --es test_mode "false" \
     --es rest_api_enabled "true" \
     --es rest_api_port "8080" \
     --es rest_api_key "$API_KEY" \
@@ -364,6 +372,7 @@ Write-Host "📱 Configuring FreeKiosk..."
 adb shell am start -n com.freekiosk/.MainActivity `
     --es lock_package $Package `
     --es auto_relaunch "true" `
+    --es test_mode "false" `
     --es rest_api_enabled "true" `
     --es rest_api_port "8080" `
     --es rest_api_key $ApiKey `
@@ -408,11 +417,24 @@ adb install myapp.apk
 ```bash
 adb shell dpm set-device-owner com.freekiosk/.DeviceAdminReceiver
 ```
-With Device Owner, FreeKiosk can automatically grant itself all required permissions including "appear on top".
+With Device Owner, FreeKiosk can automatically grant itself all required permissions including "appear on top" and "Usage Access".
 
 **Option 2: Manual permission (without Device Owner)**
 1. Go to Settings → Apps → FreeKiosk → Display over other apps
 2. Enable the permission manually
+
+### EXTERNAL_APP_LAUNCHED not appearing in logcat
+
+**Cause**: Without Device Owner, the "Usage Access" (PACKAGE_USAGE_STATS) permission must be granted manually for FreeKiosk to verify that the external app is in the foreground.
+
+**Solution**: Grant the permission via ADB:
+```bash
+adb shell appops set com.freekiosk android:get_usage_stats allow
+```
+Without this permission, the broadcast will still be emitted but with `(NOT verified)` instead of `(verified in foreground)`. The logcat tag is `FreeKiosk-ADB`:
+```bash
+adb logcat -s "FreeKiosk-ADB"
+```
 
 **Note**: Device Owner can only be set on a freshly reset device or during initial setup. Once set, all permissions are managed automatically.
 
@@ -442,11 +464,11 @@ adb shell pm clear com.freekiosk
 
 1. **ADB Access = Full Control**: Anyone with ADB access to an unlocked device can potentially reconfigure it. Disable USB debugging in production.
 
-2. **PIN Storage**: The ADB PIN is stored using SHA-256 hashing with salt, separate from the secure Keychain-stored PIN used by the UI.
+2. **PIN Storage**: The ADB PIN is saved to Android Keystore via `react-native-keychain` with PBKDF2 hashing (same secure storage as the UI PIN). The native side also keeps a SHA-256 hash for ADB re-authentication.
 
 3. **Network ADB**: If using `adb tcpip`, ensure proper network security as anyone on the network could potentially access ADB.
 
-4. **Database Synchronization**: After applying configuration, FreeKiosk performs a WAL checkpoint and file sync before restarting to ensure all data is written to disk. This typically takes ~500ms.
+4. **Configuration Storage**: ADB configuration is first saved to SharedPreferences as a "pending config", then applied to AsyncStorage by React Native on the next startup. This two-step bridge ensures reliable persistence across process restarts (~500ms).
 
 5. **Recommendations**:
    - Use strong PINs (6+ digits)

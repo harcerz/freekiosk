@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import {
   SettingsSection,
   SettingsSwitch,
@@ -13,7 +13,9 @@ import {
   SettingsInfoBox,
   SettingsInput,
 } from '../../../components/settings';
+import ScreenScheduleRuleCard from '../../../components/settings/ScreenScheduleRuleCard';
 import { Colors, Spacing, Typography } from '../../../theme';
+import { ScreenScheduleRule } from '../../../types/screenScheduler';
 
 interface DisplayTabProps {
   displayMode: 'webview' | 'external_app';
@@ -70,6 +72,16 @@ interface DisplayTabProps {
   motionCameraPosition: 'front' | 'back';
   onMotionCameraPositionChange: (value: 'front' | 'back') => void;
   availableCameras: Array<{position: 'front' | 'back', id: string}>;
+  
+  // Screen Sleep Scheduler
+  screenSchedulerEnabled: boolean;
+  onScreenSchedulerEnabledChange: (value: boolean) => void;
+  screenSchedulerRules: ScreenScheduleRule[];
+  onScreenSchedulerRulesChange: (rules: ScreenScheduleRule[]) => void;
+  screenSchedulerWakeOnTouch: boolean;
+  onScreenSchedulerWakeOnTouchChange: (value: boolean) => void;
+  onAddScheduleRule: () => void;
+  onEditScheduleRule: (rule: ScreenScheduleRule) => void;
 }
 
 const DisplayTab: React.FC<DisplayTabProps> = ({
@@ -113,6 +125,14 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
   motionCameraPosition,
   onMotionCameraPositionChange,
   availableCameras,
+  screenSchedulerEnabled,
+  onScreenSchedulerEnabledChange,
+  screenSchedulerRules,
+  onScreenSchedulerRulesChange,
+  screenSchedulerWakeOnTouch,
+  onScreenSchedulerWakeOnTouchChange,
+  onAddScheduleRule,
+  onEditScheduleRule,
 }) => {
   const handleCameraPositionChange = (value: string) => {
     if (value === 'front' || value === 'back') {
@@ -220,20 +240,19 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
       
       {/* Screensaver - WebView only */}
       {displayMode === 'webview' && (
-        <>
-          <SettingsSection title="Screensaver" icon="weather-night">
-            <SettingsSwitch
-              label="Enable Screensaver"
-              hint="Activate screensaver after a period of inactivity"
-              value={screensaverEnabled}
-              onValueChange={onScreensaverEnabledChange}
-            />
-          </SettingsSection>
+        <SettingsSection title="Screensaver" icon="weather-night">
+          <SettingsSwitch
+            label="Enable Screensaver"
+            hint="Activate screensaver after a period of inactivity"
+            value={screensaverEnabled}
+            onValueChange={onScreensaverEnabledChange}
+          />
           
           {screensaverEnabled && (
             <>
               {/* Screensaver Brightness */}
-              <SettingsSection title="Screensaver Brightness" icon="brightness-4">
+              <View style={styles.subSection}>
+                <Text style={styles.subSectionTitle}>Screensaver Brightness</Text>
                 <SettingsSlider
                   label=""
                   hint="Screen brightness when screensaver is active"
@@ -248,10 +267,11 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                     { label: 'Dim (10%)', value: 0.1 },
                   ]}
                 />
-              </SettingsSection>
+              </View>
               
               {/* Inactivity Delay */}
-              <SettingsSection title="Inactivity Delay" icon="timer-sand">
+              <View style={styles.subSection}>
+                <Text style={styles.subSectionTitle}>Inactivity Delay</Text>
                 <SettingsInput
                   label=""
                   value={inactivityDelay}
@@ -265,10 +285,11 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                   placeholder="10"
                   hint="Time in minutes before screensaver activates"
                 />
-              </SettingsSection>
+              </View>
               
               {/* Motion Detection */}
-              <SettingsSection title="Motion Detection" icon="motion-sensor">
+              <View style={styles.subSection}>
+                <Text style={styles.subSectionTitle}>Motion Detection</Text>
                 <SettingsSwitch
                   label="Enable Detection"
                   hint="Wake screen when motion is detected by the camera"
@@ -316,10 +337,10 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
 
                   </>
                 )}
-              </SettingsSection>
+              </View>
               
               {/* How it works */}
-              <SettingsSection variant="info">
+              <View style={styles.subSection}>
                 <Text style={styles.infoTitle}>ℹ️ How It Works</Text>
                 <Text style={styles.infoText}>
                   • After {inactivityDelay || '10'} minute(s) without interaction, the screen dims{`
@@ -330,11 +351,113 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
 `}
                   • Normal brightness is restored automatically
                 </Text>
-              </SettingsSection>
+              </View>
             </>
           )}
-        </>
+        </SettingsSection>
       )}
+      
+      {/* Screen Sleep Scheduler */}
+      <SettingsSection title="Screen Sleep Schedule" icon="power-sleep">
+        <SettingsSwitch
+          label="Enable Screen Schedule"
+          hint="Automatically turn screen off/on at scheduled times to save energy"
+          value={screenSchedulerEnabled}
+          onValueChange={onScreenSchedulerEnabledChange}
+        />
+        
+        {screenSchedulerEnabled && (
+          <>
+            {/* Schedule Rules List */}
+            <View style={styles.subSection}>
+              <Text style={styles.subSectionTitle}>Schedule Rules</Text>
+              {screenSchedulerRules.length === 0 ? (
+                <SettingsInfoBox variant="info">
+                  <Text style={styles.infoText}>
+                    No rules configured yet. Add a rule to define when the screen should turn off.
+                  </Text>
+                </SettingsInfoBox>
+              ) : (
+                <View style={styles.rulesContainer}>
+                  {screenSchedulerRules.map((rule) => (
+                    <ScreenScheduleRuleCard
+                      key={rule.id}
+                      rule={rule}
+                      onToggle={(id, enabled) => {
+                        onScreenSchedulerRulesChange(
+                          screenSchedulerRules.map(r =>
+                            r.id === id ? { ...r, enabled } : r
+                          )
+                        );
+                      }}
+                      onEdit={onEditScheduleRule}
+                      onDelete={(id) => {
+                        Alert.alert(
+                          'Delete Rule',
+                          'Are you sure you want to delete this schedule rule?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Delete',
+                              style: 'destructive',
+                              onPress: () => {
+                                onScreenSchedulerRulesChange(
+                                  screenSchedulerRules.filter(r => r.id !== id)
+                                );
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                    />
+                  ))}
+                </View>
+              )}
+              
+              <TouchableOpacity style={styles.addRuleButton} onPress={onAddScheduleRule}>
+                <Text style={styles.addRuleButtonText}>➕ Add Schedule Rule</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* Wake on Touch option */}
+            <View style={styles.subSection}>
+              <Text style={styles.subSectionTitle}>Wake Options</Text>
+              <SettingsSwitch
+                label="Wake on Touch"
+                hint="Allow the screen to wake up temporarily when touched during a scheduled sleep period"
+                value={screenSchedulerWakeOnTouch}
+                onValueChange={onScreenSchedulerWakeOnTouchChange}
+              />
+              {!screenSchedulerWakeOnTouch && (
+                <SettingsInfoBox variant="warning">
+                  <Text style={styles.infoText}>
+                    ⚠️ Touch will not wake the screen during sleep periods. Use the scheduled wake time or REST API to turn screen back on.
+                  </Text>
+                </SettingsInfoBox>
+              )}
+            </View>
+            
+            {/* How it works */}
+            <View style={styles.subSection}>
+              <Text style={styles.infoTitle}>ℹ️ How Screen Schedule Works</Text>
+              <Text style={styles.infoText}>
+                • Screen turns OFF automatically at the scheduled sleep time{`\n`}
+                • Screen turns ON automatically at the scheduled wake time{`\n`}
+                • Multiple rules can cover different days/times{`\n`}
+                • Overnight rules (e.g., 22:00→07:00) are supported{`\n`}
+                {screenSchedulerWakeOnTouch
+                  ? '• Touch the screen to temporarily wake it during sleep\n'
+                  : '• Touch wake is disabled during sleep periods\n'
+                }
+                {`\n`}
+                {'📱 Device Owner: screen is truly locked (lockNow) + native alarm for wake\n'}
+                {'📱 Non Device Owner: brightness set to 0 + black overlay\n'}
+                {'⏰ Wake alarm uses Android AlarmManager for reliable timing'}
+              </Text>
+            </View>
+          </>
+        )}
+      </SettingsSection>
       
       {/* Status Bar */}
       <SettingsSection title="System Status Bar" icon="chart-bar">
@@ -480,6 +603,24 @@ const styles = StyleSheet.create({
     ...Typography.label,
     color: Colors.infoDark,
     marginBottom: Spacing.sm,
+  },
+  rulesContainer: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  addRuleButton: {
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    marginTop: Spacing.xs,
+  },
+  addRuleButtonText: {
+    color: Colors.primary,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
 

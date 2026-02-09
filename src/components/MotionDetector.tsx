@@ -15,7 +15,8 @@ interface MotionDetectorProps {
 
 const THROTTLE_INTERVAL = 2000; // Minimum 2s entre détections
 const CAPTURE_INTERVAL = 1000; // Capturer une photo par seconde
-const CAMERA_READY_DELAY = 500; // Delay before starting detection to let camera initialize
+const CAMERA_READY_DELAY = 1500; // Delay before starting detection to let camera initialize and auto-expose
+const WARMUP_FRAMES = 3; // Skip first N frames to let camera auto-exposure adjust
 
 // Seuils de sensibilité : ratio de pixels qui doivent changer
 const SENSITIVITY_THRESHOLDS = {
@@ -38,6 +39,8 @@ const MotionDetector: React.FC<MotionDetectorProps> = ({
   const detectionInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMounted = useRef<boolean>(true);
   const isCapturing = useRef<boolean>(false);
+  const warmupFrames = useRef<number>(0);
+  const captureCount = useRef<number>(0);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
 
@@ -57,6 +60,8 @@ const MotionDetector: React.FC<MotionDetectorProps> = ({
       detectionInterval.current = null;
     }
     isCapturing.current = false;
+    warmupFrames.current = 0;
+    captureCount.current = 0;
     // Reset native module
     MotionDetectionModule?.reset().catch(() => {});
   }, []);
@@ -70,6 +75,7 @@ const MotionDetector: React.FC<MotionDetectorProps> = ({
     // Check if camera ref exists and is valid
     const camera = cameraRef.current;
     if (!camera) {
+      console.warn('[MotionDetection] Camera ref is null, skipping capture');
       return;
     }
 
@@ -87,6 +93,22 @@ const MotionDetector: React.FC<MotionDetectorProps> = ({
       }
 
       if (!photo || !photo.path) {
+        console.warn('[MotionDetection] Photo capture returned no path');
+        return;
+      }
+
+      captureCount.current += 1;
+
+      // Skip warmup frames to let camera auto-exposure adjust
+      // This is critical when screen brightness is 0 (dark environment)
+      if (warmupFrames.current < WARMUP_FRAMES) {
+        warmupFrames.current += 1;
+        console.log(`[MotionDetection] Warmup frame ${warmupFrames.current}/${WARMUP_FRAMES}, skipping comparison`);
+        // Still send to native to build up the "previous" frame
+        await MotionDetectionModule.compareImages(
+          photo.path,
+          SENSITIVITY_THRESHOLDS[sensitivity]
+        );
         return;
       }
 
@@ -96,21 +118,32 @@ const MotionDetector: React.FC<MotionDetectorProps> = ({
         SENSITIVITY_THRESHOLDS[sensitivity]
       );
 
+      // Log periodically (every 10 captures) to avoid log spam
+      if (captureCount.current % 10 === 0) {
+        console.log(`[MotionDetection] Capture #${captureCount.current}, hasMotion=${hasMotion}, sensitivity=${sensitivity}, threshold=${SENSITIVITY_THRESHOLDS[sensitivity]}`);
+      }
+
       // Check again after async operation
       if (!isMounted.current || !enabled) {
         return;
       }
 
       if (hasMotion) {
+        console.log('[MotionDetection] Motion detected! Triggering callback');
         const now = Date.now();
         if (now - lastMotionTime.current > THROTTLE_INTERVAL) {
           lastMotionTime.current = now;
           onMotionDetected();
+        } else {
+          console.log('[MotionDetection] Motion throttled (too soon after last detection)');
         }
       }
-    } catch (error) {
-      // Silent capture errors - this includes the findCameraView error
-      // which happens when camera is unmounted during capture
+    } catch (error: any) {
+      // Log the error for debugging - but don't crash
+      // findCameraView errors happen when camera is unmounted during capture
+      if (error?.message && !error.message.includes('findCameraView')) {
+        console.warn(`[MotionDetection] Capture error: ${error.message}`);
+      }
     } finally {
       isCapturing.current = false;
     }
@@ -185,15 +218,17 @@ const MotionDetector: React.FC<MotionDetectorProps> = ({
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} pointerEvents="none">
       <Camera
         ref={cameraRef}
         style={styles.camera}
         device={device}
         isActive={isCameraActive}
         photo={true}
+        lowLightBoost={device.supportsLowLightBoost}
         onInitialized={handleCameraInitialized}
         onError={handleCameraError}
+        enableZoomGesture={false}
       />
     </View>
   );
@@ -202,10 +237,12 @@ const MotionDetector: React.FC<MotionDetectorProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
+    // Use off-screen positioning instead of opacity:0 which can prevent
+    // camera capture on some Android devices
+    left: -1000,
+    top: -1000,
     width: 1,
     height: 1,
-    opacity: 0,
-    zIndex: -1,
     overflow: 'hidden',
   },
   camera: {

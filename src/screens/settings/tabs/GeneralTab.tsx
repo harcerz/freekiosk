@@ -37,6 +37,8 @@ interface GeneralTabProps {
   // Permissions
   hasOverlayPermission: boolean;
   onRequestOverlayPermission: () => void;
+  hasUsageStatsPermission: boolean;
+  onRequestUsageStatsPermission: () => void;
   isDeviceOwner: boolean;
   
   // PIN
@@ -80,6 +82,16 @@ interface GeneralTabProps {
   onWebViewBackButtonYPercentChange: (value: string) => void;
   onResetWebViewBackButtonPosition: () => void;
   
+  // Inactivity Return to Home (webview only)
+  inactivityReturnEnabled: boolean;
+  onInactivityReturnEnabledChange: (value: boolean) => void;
+  inactivityReturnDelay: string;
+  onInactivityReturnDelayChange: (value: string) => void;
+  inactivityReturnResetOnNav: boolean;
+  onInactivityReturnResetOnNavChange: (value: boolean) => void;
+  inactivityReturnClearCache: boolean;
+  onInactivityReturnClearCacheChange: (value: boolean) => void;
+  
   // Navigation
   onBackToKiosk: () => void;
 }
@@ -95,6 +107,8 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
   loadingApps,
   hasOverlayPermission,
   onRequestOverlayPermission,
+  hasUsageStatsPermission,
+  onRequestUsageStatsPermission,
   isDeviceOwner,
   pin,
   onPinChange,
@@ -127,6 +141,14 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
   webViewBackButtonYPercent,
   onWebViewBackButtonYPercentChange,
   onResetWebViewBackButtonPosition,
+  inactivityReturnEnabled,
+  onInactivityReturnEnabledChange,
+  inactivityReturnDelay,
+  onInactivityReturnDelayChange,
+  inactivityReturnResetOnNav,
+  onInactivityReturnResetOnNavChange,
+  inactivityReturnClearCache,
+  onInactivityReturnClearCacheChange,
   onBackToKiosk,
 }) => {
   return (
@@ -339,6 +361,32 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
               />
             )}
           </SettingsSection>
+          
+          {/* Usage Stats Permission - required for auto-relaunch monitoring */}
+          <SettingsSection
+            variant={hasUsageStatsPermission ? 'success' : 'warning'}
+          >
+            <View style={styles.permissionRow}>
+              <View style={styles.permissionTextContainer}>
+                <Text style={[styles.permissionTitle, { color: hasUsageStatsPermission ? Colors.successDark : Colors.warningDark }]}>
+                  {hasUsageStatsPermission ? '✓ Usage Access Granted' : '⚠️ Usage Access Required'}
+                </Text>
+                <Text style={styles.permissionHint}>
+                  {hasUsageStatsPermission
+                    ? "Auto-relaunch monitoring is active. FreeKiosk can detect when the external app closes."
+                    : "Required for auto-relaunch. Without this, FreeKiosk cannot detect when the external app closes or crashes."}
+                </Text>
+              </View>
+            </View>
+            
+            {!hasUsageStatsPermission && (
+              <SettingsButton
+                title="Grant Usage Access"
+                variant="warning"
+                onPress={onRequestUsageStatsPermission}
+              />
+            )}
+          </SettingsSection>
         </>
       )}
       
@@ -383,6 +431,55 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
           />
         </View>
       </SettingsSection>
+      
+      {/* Inactivity Return to Home - WebView only */}
+      {displayMode === 'webview' && (
+        <SettingsSection title="Inactivity Return" icon="timer-sand">
+          <SettingsSwitch
+            label="Return to Start Page on Inactivity"
+            value={inactivityReturnEnabled}
+            onValueChange={onInactivityReturnEnabledChange}
+            hint="Automatically navigate back to the start URL when the screen hasn't been touched for a set duration"
+          />
+          
+          {inactivityReturnEnabled && (
+            <>
+              <View style={styles.rotationSpacer} />
+              <SettingsInput
+                label="Inactivity Timeout (seconds)"
+                value={inactivityReturnDelay}
+                onChangeText={onInactivityReturnDelayChange}
+                placeholder="60"
+                keyboardType="numeric"
+                hint="Time in seconds before returning to start page (5-3600)"
+              />
+              
+              <View style={styles.rotationSpacer} />
+              <SettingsSwitch
+                label="Reset Timer on Page Load"
+                value={inactivityReturnResetOnNav}
+                onValueChange={onInactivityReturnResetOnNavChange}
+                hint="Restart the inactivity timer when a new page loads within the WebView"
+              />
+              
+              <SettingsSwitch
+                label="Clear Cache on Return"
+                value={inactivityReturnClearCache}
+                onValueChange={onInactivityReturnClearCacheChange}
+                hint="Clear the WebView cache when returning to the start page (full reload)"
+              />
+              
+              <SettingsInfoBox variant="info">
+                <Text style={styles.infoText}>
+                  ℹ️ The timer resets on every touch interaction.{`\n`}
+                  If already on the start page, no reload will occur.{`\n`}
+                  Disabled during URL Rotation, URL Planner, and Screensaver.
+                </Text>
+              </SettingsInfoBox>
+            </>
+          )}
+        </SettingsSection>
+      )}
       
       {/* Auto Reload - WebView only */}
       {displayMode === 'webview' && (

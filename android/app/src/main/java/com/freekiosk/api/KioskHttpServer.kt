@@ -54,6 +54,7 @@ class KioskHttpServer(
         }
 
         // Route requests
+        val isGetOrPost = method == Method.GET || method == Method.POST
         val response = try {
             when {
                 // GET endpoints (read-only)
@@ -73,41 +74,49 @@ class KioskHttpServer(
                 method == Method.GET && uri == "/api/camera/list" -> handleCameraList()
                 method == Method.GET && uri == "/" -> handleRoot()
 
-                // POST endpoints (control)
+                // POST endpoints requiring a body (POST only, GET returns 405)
                 method == Method.POST && uri == "/api/brightness" -> handleSetBrightness(session)
-                method == Method.POST && uri == "/api/screen/on" -> handleScreenOn()
-                method == Method.POST && uri == "/api/screen/off" -> handleScreenOff()
-                method == Method.POST && uri == "/api/screensaver/on" -> handleScreensaverOn()
-                method == Method.POST && uri == "/api/screensaver/off" -> handleScreensaverOff()
-                method == Method.POST && uri == "/api/reload" -> handleReload()
                 method == Method.POST && uri == "/api/url" -> handleSetUrl(session)
-                method == Method.POST && uri == "/api/navigate" -> handleSetUrl(session) // Alias for url
+                method == Method.POST && uri == "/api/navigate" -> handleSetUrl(session)
                 method == Method.POST && uri == "/api/tts" -> handleTts(session)
-                method == Method.POST && uri == "/api/wake" -> handleWake()
                 method == Method.POST && uri == "/api/volume" -> handleSetVolume(session)
                 method == Method.POST && uri == "/api/toast" -> handleToast(session)
                 method == Method.POST && uri == "/api/app/launch" -> handleLaunchApp(session)
                 method == Method.POST && uri == "/api/js" -> handleExecuteJs(session)
-                method == Method.POST && uri == "/api/reboot" -> handleReboot()
-                method == Method.POST && uri == "/api/clearCache" -> handleClearCache()
                 method == Method.POST && uri == "/api/audio/play" -> handleAudioPlay(session)
-                method == Method.POST && uri == "/api/audio/stop" -> handleAudioStop()
-                method == Method.POST && uri == "/api/audio/beep" -> handleAudioBeep()
+
+                // Control endpoints (accept both GET and POST for convenience)
+                isGetOrPost && uri == "/api/screen/on" -> handleScreenOn()
+                isGetOrPost && uri == "/api/screen/off" -> handleScreenOff()
+                isGetOrPost && uri == "/api/screensaver/on" -> handleScreensaverOn()
+                isGetOrPost && uri == "/api/screensaver/off" -> handleScreensaverOff()
+                isGetOrPost && uri == "/api/reload" -> handleReload()
+                isGetOrPost && uri == "/api/wake" -> handleWake()
+                isGetOrPost && uri == "/api/reboot" -> handleReboot()
+                isGetOrPost && uri == "/api/clearCache" -> handleClearCache()
+                isGetOrPost && uri == "/api/audio/stop" -> handleAudioStop()
+                isGetOrPost && uri == "/api/audio/beep" -> handleAudioBeep()
                 
-                // Rotation control
-                method == Method.POST && uri == "/api/rotation/start" -> handleRotationStart()
-                method == Method.POST && uri == "/api/rotation/stop" -> handleRotationStop()
+                // Rotation control (accept both GET and POST)
+                isGetOrPost && uri == "/api/rotation/start" -> handleRotationStart()
+                isGetOrPost && uri == "/api/rotation/stop" -> handleRotationStop()
                 
-                // Remote control (Android TV)
-                method == Method.POST && uri == "/api/remote/up" -> handleRemoteKey("up")
-                method == Method.POST && uri == "/api/remote/down" -> handleRemoteKey("down")
-                method == Method.POST && uri == "/api/remote/left" -> handleRemoteKey("left")
-                method == Method.POST && uri == "/api/remote/right" -> handleRemoteKey("right")
-                method == Method.POST && uri == "/api/remote/select" -> handleRemoteKey("select")
-                method == Method.POST && uri == "/api/remote/back" -> handleRemoteKey("back")
-                method == Method.POST && uri == "/api/remote/home" -> handleRemoteKey("home")
-                method == Method.POST && uri == "/api/remote/menu" -> handleRemoteKey("menu")
-                method == Method.POST && uri == "/api/remote/playpause" -> handleRemoteKey("playpause")
+                // Remote control - Android TV (accept both GET and POST)
+                isGetOrPost && uri == "/api/remote/up" -> handleRemoteKey("up")
+                isGetOrPost && uri == "/api/remote/down" -> handleRemoteKey("down")
+                isGetOrPost && uri == "/api/remote/left" -> handleRemoteKey("left")
+                isGetOrPost && uri == "/api/remote/right" -> handleRemoteKey("right")
+                isGetOrPost && uri == "/api/remote/select" -> handleRemoteKey("select")
+                isGetOrPost && uri == "/api/remote/back" -> handleRemoteKey("back")
+                isGetOrPost && uri == "/api/remote/home" -> handleRemoteKey("home")
+                isGetOrPost && uri == "/api/remote/menu" -> handleRemoteKey("menu")
+                isGetOrPost && uri == "/api/remote/playpause" -> handleRemoteKey("playpause")
+
+                // Method Not Allowed: valid POST endpoints called with GET
+                method == Method.GET && uri in listOf(
+                    "/api/brightness", "/api/url", "/api/navigate", "/api/tts",
+                    "/api/volume", "/api/toast", "/api/app/launch", "/api/js", "/api/audio/play"
+                ) -> jsonError(Response.Status.METHOD_NOT_ALLOWED, "This endpoint requires POST with a JSON body")
 
                 else -> jsonError(Response.Status.NOT_FOUND, "Endpoint not found")
             }
@@ -145,23 +154,28 @@ class KioskHttpServer(
                 })
                 put("POST", JSONArray().apply {
                     put("/api/brightness - Set brightness {value: 0-100}")
-                    put("/api/screen/on - Turn screen on")
-                    put("/api/screen/off - Turn screen off")
-                    put("/api/reload - Reload WebView")
                     put("/api/url - Navigate to URL {url: string}")
                     put("/api/navigate - Navigate to URL (alias)")
                     put("/api/tts - Text to speech {text: string}")
                     put("/api/toast - Show toast {text: string}")
-                    put("/api/wake - Wake from screensaver")
-                    put("/api/screensaver/on - Activate screensaver")
-                    put("/api/screensaver/off - Deactivate screensaver")
                     put("/api/volume - Set volume {value: 0-100}")
-                    put("/api/rotation/start - Start URL rotation")
-                    put("/api/rotation/stop - Stop URL rotation")
                     put("/api/app/launch - Launch app {package: string}")
                     put("/api/js - Execute JavaScript {code: string}")
+                    put("/api/audio/play - Play audio {url: string, loop: bool, volume: 0-100}")
+                })
+                put("GET or POST", JSONArray().apply {
+                    put("/api/screen/on - Turn screen on")
+                    put("/api/screen/off - Turn screen off")
+                    put("/api/screensaver/on - Activate screensaver")
+                    put("/api/screensaver/off - Deactivate screensaver")
+                    put("/api/reload - Reload WebView")
+                    put("/api/wake - Wake from screensaver")
                     put("/api/reboot - Reboot device (Device Owner)")
                     put("/api/clearCache - Clear WebView cache")
+                    put("/api/audio/stop - Stop audio playback")
+                    put("/api/audio/beep - Play beep sound")
+                    put("/api/rotation/start - Start URL rotation")
+                    put("/api/rotation/stop - Stop URL rotation")
                     put("/api/remote/* - Remote control (up/down/left/right/select/back/home/menu/playpause)")
                 })
             })

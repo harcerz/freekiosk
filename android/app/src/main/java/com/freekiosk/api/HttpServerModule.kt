@@ -549,6 +549,34 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     })
                 }
             }
+            "reboot" -> {
+                return try {
+                    val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                    val adminComponent = android.content.ComponentName(reactContext, DeviceAdminReceiver::class.java)
+                    if (dpm.isDeviceOwnerApp(reactContext.packageName)) {
+                        Log.d(TAG, "Rebooting device via Device Owner API")
+                        dpm.reboot(adminComponent)
+                        JSONObject().apply {
+                            put("executed", true)
+                            put("command", command)
+                        }
+                    } else {
+                        Log.w(TAG, "Reboot failed: not Device Owner")
+                        JSONObject().apply {
+                            put("executed", false)
+                            put("command", command)
+                            put("error", "Reboot requires Device Owner mode")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Reboot failed: ${e.message}")
+                    JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "Reboot failed: ${e.message}")
+                    }
+                }
+            }
         }
         
         // Send other commands to JS side

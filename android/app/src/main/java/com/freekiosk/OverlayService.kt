@@ -122,6 +122,8 @@ class OverlayService : Service() {
     private var timeText: TextView? = null
     private var tapCount = 0
     private var firstTapTime = 0L // Time of first tap in sequence
+    // Cache Bluetooth isConnected Method to avoid reflection on every status bar update
+    private var btIsConnectedMethod: java.lang.reflect.Method? = null
     private val tapHandler = Handler(Looper.getMainLooper())
     private val statusUpdateHandler = Handler(Looper.getMainLooper())
     private var tapTimeout = 1500L // Default 1.5 seconds, will be overridden from intent
@@ -130,13 +132,13 @@ class OverlayService : Service() {
     private var buttonPosition = "bottom-right" // 'top-left', 'top-right', 'bottom-left', 'bottom-right'
     private val CHANNEL_ID = "FreeKioskOverlay"
     private val NOTIFICATION_ID = 1001
-    private val STATUS_UPDATE_INTERVAL = 5000L // Update every 5 seconds
+    private val STATUS_UPDATE_INTERVAL = 15000L // Update every 15 seconds (was 5s, reduced for low-end device performance)
     
     // Auto-relaunch monitoring
     private var lockedPackage: String? = null // Package name of the locked app to monitor
     private var autoRelaunchEnabled = false // Whether auto-relaunch is enabled
     private val foregroundMonitorHandler = Handler(Looper.getMainLooper())
-    private val FOREGROUND_CHECK_INTERVAL = 2000L // Check every 2 seconds
+    private val FOREGROUND_CHECK_INTERVAL = 5000L // Check every 5 seconds (was 2s, reduced for low-end device performance)
     // BroadcastReceiver pour détecter quand l'écran s'allume
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -269,41 +271,63 @@ class OverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // When START_STICKY restarts the service after OOM kill, intent is null.
+        // In that case, just ensure the overlay exists without full recreation.
+        if (intent == null) {
+            DebugLog.d("OverlayService", "onStartCommand with null intent (service restarted by system)")
+            val hasOverlayPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+            if (hasOverlayPermission && overlayView == null) {
+                createOverlay()
+            }
+            if (hasOverlayPermission && statusBarEnabled && statusBarView == null) {
+                createStatusBar()
+                startStatusUpdates()
+            }
+            if (autoRelaunchEnabled && lockedPackage != null) {
+                startForegroundMonitoring()
+            }
+            return START_STICKY
+        }
+
         // Reload button opacity and status bar settings from SharedPreferences
         // This ensures we have the latest values when service is restarted
         loadButtonOpacity()
         
+        // Track if overlay parameters changed — avoid unnecessary destroy/recreate
+        val oldReturnMode = returnMode
+        val oldButtonPosition = buttonPosition
+
         // Get required taps from intent (default 5)
-        intent?.getIntExtra("REQUIRED_TAPS", 5)?.let { taps ->
+        intent.getIntExtra("REQUIRED_TAPS", 5).let { taps ->
             requiredTaps = taps.coerceIn(2, 20)
             DebugLog.d("OverlayService", "Required taps set to: $requiredTaps")
         }
         
         // Get tap timeout from intent (default 1500ms)
-        intent?.getLongExtra("TAP_TIMEOUT", 1500L)?.let { timeout ->
+        intent.getLongExtra("TAP_TIMEOUT", 1500L).let { timeout ->
             tapTimeout = timeout.coerceIn(500L, 5000L)
             DebugLog.d("OverlayService", "Tap timeout set to: ${tapTimeout}ms")
         }
         
         // Get return mode from intent (default 'tap_anywhere')
-        intent?.getStringExtra("RETURN_MODE")?.let { mode ->
+        intent.getStringExtra("RETURN_MODE")?.let { mode ->
             returnMode = mode
             DebugLog.d("OverlayService", "Return mode set to: $returnMode")
         }
         
         // Get button position from intent (default 'bottom-right')
-        intent?.getStringExtra("BUTTON_POSITION")?.let { position ->
+        intent.getStringExtra("BUTTON_POSITION")?.let { position ->
             buttonPosition = position
             DebugLog.d("OverlayService", "Button position set to: $buttonPosition")
         }
         
         // Get locked package and auto-relaunch settings for monitoring
-        intent?.getStringExtra("LOCKED_PACKAGE")?.let { pkg ->
+        intent.getStringExtra("LOCKED_PACKAGE")?.let { pkg ->
             lockedPackage = pkg
             DebugLog.d("OverlayService", "Locked package set to: $lockedPackage")
         }
         
-        intent?.getBooleanExtra("AUTO_RELAUNCH", false)?.let { enabled ->
+        intent.getBooleanExtra("AUTO_RELAUNCH", false).let { enabled ->
             autoRelaunchEnabled = enabled
             DebugLog.d("OverlayService", "Auto-relaunch enabled: $autoRelaunchEnabled")
         }
@@ -318,14 +342,16 @@ class OverlayService : Service() {
         // Vérifier la permission overlay avant de créer des vues
         val hasOverlayPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
         
-        // Recréer l'overlay avec les nouveaux paramètres (détruire l'ancien d'abord)
+        // Only recreate overlay if parameters changed or overlay doesn't exist
+        val overlayParamsChanged = returnMode != oldReturnMode || buttonPosition != oldButtonPosition
         if (hasOverlayPermission) {
-            // Si un overlay existe déjà, le détruire avant de créer le nouveau
-            if (overlayView != null) {
-                DebugLog.d("OverlayService", "Overlay exists, recreating with new parameters")
+            if (overlayView != null && overlayParamsChanged) {
+                DebugLog.d("OverlayService", "Overlay params changed, recreating")
                 destroyOverlay()
+                createOverlay()
+            } else if (overlayView == null) {
+                createOverlay()
             }
-            createOverlay()
         }
 
         // Créer la status bar si activée ET si on a la permission
@@ -799,9 +825,11 @@ class OverlayService : Service() {
                         if (bondedDevices != null) {
                             for (device in bondedDevices) {
                                 try {
-                                    // Utiliser réflexion pour accéder à isConnected() (méthode cachée)
-                                    val isConnectedMethod = device.javaClass.getMethod("isConnected")
-                                    val connected = isConnectedMethod.invoke(device) as? Boolean ?: false
+                                    // Use cached reflection Method for isConnected() (hidden API)
+                                    if (btIsConnectedMethod == null) {
+                                        btIsConnectedMethod = device.javaClass.getMethod("isConnected")
+                                    }
+                                    val connected = btIsConnectedMethod?.invoke(device) as? Boolean ?: false
                                     if (connected) {
                                         hasConnectedDevice = true
                                         break
@@ -1055,8 +1083,9 @@ class OverlayService : Service() {
      */
     private fun startForegroundMonitoring() {
         stopForegroundMonitoring() // Clear any existing monitoring
+        foregroundNullCount = 0
         
-        DebugLog.d("OverlayService", "Starting foreground monitoring for package: $lockedPackage")
+        android.util.Log.i("OverlayService", "Starting foreground monitoring for package: $lockedPackage (interval=${FOREGROUND_CHECK_INTERVAL}ms)")
         
         foregroundMonitorHandler.post(object : Runnable {
             override fun run() {
@@ -1079,24 +1108,31 @@ class OverlayService : Service() {
     /**
      * Check if the locked app is still in foreground, bring FreeKiosk back if not
      */
+    private var foregroundNullCount = 0
+    
     private fun checkForegroundApp() {
         try {
             val topPackage = getForegroundPackage()
             
             if (topPackage == null) {
-                DebugLog.d("OverlayService", "Could not determine foreground app")
+                foregroundNullCount++
+                // Log warning every 12 checks (~60s at 5s interval) to avoid spam
+                if (foregroundNullCount == 1 || foregroundNullCount % 12 == 0) {
+                    android.util.Log.w("OverlayService", "Cannot determine foreground app (count=$foregroundNullCount) - Usage Stats permission may be missing. Grant via: adb shell appops set com.freekiosk android:get_usage_stats allow")
+                }
                 return
             }
+            foregroundNullCount = 0
             
             // If locked app is not in foreground and FreeKiosk is not in foreground
             if (topPackage != lockedPackage && topPackage != packageName) {
-                DebugLog.d("OverlayService", "Locked app ($lockedPackage) not in foreground (current: $topPackage) - bringing FreeKiosk back")
+                android.util.Log.i("OverlayService", "Locked app ($lockedPackage) not in foreground (current: $topPackage) - bringing FreeKiosk back")
                 
                 // Bring FreeKiosk back to foreground
                 bringFreeKioskToFront()
             }
         } catch (e: Exception) {
-            DebugLog.errorProduction("OverlayService", "Error checking foreground app: ${e.message}")
+            android.util.Log.e("OverlayService", "Error checking foreground app: ${e.message}")
         }
     }
 
@@ -1144,7 +1180,7 @@ class OverlayService : Service() {
      */
     private fun bringFreeKioskToFront() {
         try {
-            DebugLog.d("OverlayService", "Bringing FreeKiosk to foreground")
+            android.util.Log.i("OverlayService", "Bringing FreeKiosk to foreground for auto-relaunch")
             
             val intent = Intent(this, MainActivity::class.java)
             intent.addFlags(

@@ -21,3 +21,7 @@ export { default as ScheduleEventCard } from './ScheduleEventCard';
 export { default as ScheduleEventList } from './ScheduleEventList';
 export { default as RecurringEventEditor } from './RecurringEventEditor';
 export { default as OneTimeEventEditor } from './OneTimeEventEditor';
+
+// Screen Schedule components
+export { default as ScreenScheduleRuleCard } from './ScreenScheduleRuleCard';
+export { default as ScreenScheduleRuleEditor } from './ScreenScheduleRuleEditor';

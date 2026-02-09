@@ -11,7 +11,7 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/Version-1.2.5-blue.svg" alt="Version 1.2.5">
+    <img src="https://img.shields.io/badge/Version-1.2.6-blue.svg" alt="Version 1.2.6">
     <a href="https://github.com/rushb-fr/freekiosk/releases"><img src="https://img.shields.io/github/downloads/rushb-fr/freekiosk/total.svg" alt="Downloads"></a>
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
@@ -261,7 +261,22 @@ Done! Your tablet is now in kiosk mode.
 
 ## 🗺️ Roadmap
 
-### ✅ v1.2.5 (Feb 2026) - Camera API & Screen State Improvements 🆕
+### ✅ v1.2.6 (Feb 2026) - Screen Sleep Scheduler, Inactivity Return & Improvements 🆕
+- 🏠 **Inactivity Return to Home**: Auto-navigate back to start page after inactivity timeout
+  - Configurable timeout (5–3600 seconds), resets on touch/scroll/click
+  - Option to clear cache on return and reset timer on new page load
+  - Smart detection: paused during Screensaver, URL Rotation, and URL Planner
+- 🌙 **Screen Sleep Scheduler**: Automatically turn off screen during scheduled time periods
+  - Multiple schedule rules with custom names, specific days, sleep/wake times
+  - Supports midnight-crossing schedules with AlarmManager integration
+  - Wake on touch option and PIN bypass for automatic wake-up
+- 🔍 **Background App Monitoring**: Auto-relaunch monitoring for External App mode
+- 🔄 **Update Installation on Samsung Devices**: Silent install via PackageInstaller API with auto-restart
+- 🚀 **ADB Configuration Kiosk Mode**: Fixed kiosk mode not activating on first launch
+- 🌐 **REST API Reboot Endpoint**: Fixed reboot via native DevicePolicyManager
+- 🔀 **REST API Method Handling**: Control endpoints now accept both GET and POST
+
+### ✅ v1.2.5 (Feb 2026) - Camera API & Screen State Improvements
 - 📷 **Camera Photo API**: Take photos via REST endpoint using device cameras
   - `GET /api/camera/photo?camera=back&quality=80` - Capture JPEG photo
   - `GET /api/camera/list` - List available cameras with capabilities

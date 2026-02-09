@@ -28,13 +28,14 @@ class MotionDetectionModule(reactContext: ReactApplicationContext) : ReactContex
             try {
                 val file = File(imagePath)
                 if (!file.exists()) {
+                    android.util.Log.w("MotionDetection", "Image file not found: $imagePath")
                     promise.reject("FILE_NOT_FOUND", "Image file not found: $imagePath")
                     return@execute
                 }
 
                 // Load and resize image for performance
                 val options = BitmapFactory.Options().apply {
-                    inSampleSize = 8 // Reduce to 1/8 size for faster processing (was 4)
+                    inSampleSize = 4 // Reduce to 1/4 size (was 1/8 - too aggressive)
                     inPreferredConfig = Bitmap.Config.RGB_565 // Use less memory
                 }
                 val currentBitmap = BitmapFactory.decodeFile(imagePath, options)
@@ -45,6 +46,7 @@ class MotionDetectionModule(reactContext: ReactApplicationContext) : ReactContex
                 } catch (_: Exception) {}
 
                 if (currentBitmap == null) {
+                    android.util.Log.w("MotionDetection", "Failed to decode image")
                     promise.reject("DECODE_ERROR", "Failed to decode image")
                     return@execute
                 }
@@ -54,6 +56,7 @@ class MotionDetectionModule(reactContext: ReactApplicationContext) : ReactContex
                     hasMotion = if (previousBitmap != null && !previousBitmap!!.isRecycled) {
                         detectMotion(previousBitmap!!, currentBitmap, threshold)
                     } else {
+                        android.util.Log.d("MotionDetection", "First frame captured (${currentBitmap.width}x${currentBitmap.height}), storing reference")
                         false // First image, no comparison
                     }
 
@@ -69,6 +72,7 @@ class MotionDetectionModule(reactContext: ReactApplicationContext) : ReactContex
                 promise.resolve(hasMotion)
 
             } catch (e: Exception) {
+                android.util.Log.e("MotionDetection", "Motion detection error: ${e.message}")
                 promise.reject("ERROR", "Motion detection error: ${e.message}")
             }
         }
@@ -100,15 +104,19 @@ class MotionDetectionModule(reactContext: ReactApplicationContext) : ReactContex
         }
         
         if (previous.width != current.width || previous.height != current.height) {
+            android.util.Log.w("MotionDetection", "Image size mismatch: ${previous.width}x${previous.height} vs ${current.width}x${current.height}")
             return false
         }
 
         val width = previous.width
         val height = previous.height
-        val sampleSize = 50 // Sample every N pixels
+        // Sample every 4 pixels - images are already downscaled so we need thorough sampling
+        // With inSampleSize=4, a 4000x3000 image becomes ~1000x750, sampled every 4px = ~47K samples
+        val sampleSize = 4
 
         var differences = 0
         var samples = 0
+        var totalDiff: Long = 0
 
         try {
             for (y in 0 until height step sampleSize) {
@@ -124,7 +132,17 @@ class MotionDetectionModule(reactContext: ReactApplicationContext) : ReactContex
                     val g2 = (pixel2 shr 8) and 0xFF
                     val b2 = pixel2 and 0xFF
 
-                    val diff = abs(r1 - r2) + abs(g1 - g2) + abs(b1 - b2)
+                    // Use luminance-based comparison - more reliable in low-light conditions
+                    val lum1 = 0.299 * r1 + 0.587 * g1 + 0.114 * b1
+                    val lum2 = 0.299 * r2 + 0.587 * g2 + 0.114 * b2
+                    val lumDiff = abs(lum1 - lum2).toInt()
+
+                    // Also check RGB diff for color changes
+                    val rgbDiff = abs(r1 - r2) + abs(g1 - g2) + abs(b1 - b2)
+
+                    // Use the max of luminance diff (scaled) and rgb diff
+                    val diff = maxOf(lumDiff * 3, rgbDiff)
+                    totalDiff += diff
 
                     // If pixel difference > 30 (out of 765 max), count as changed
                     if (diff > 30) {
@@ -139,7 +157,13 @@ class MotionDetectionModule(reactContext: ReactApplicationContext) : ReactContex
         }
 
         val changeRatio = if (samples > 0) differences.toDouble() / samples else 0.0
-        return changeRatio > threshold
+        val avgDiff = if (samples > 0) totalDiff.toDouble() / samples else 0.0
+        val result = changeRatio > threshold
+        
+        // Log comparison results for debugging
+        android.util.Log.d("MotionDetection", "Compare: ${width}x${height}, samples=$samples, changed=$differences, ratio=${"%,.4f".format(changeRatio)}, avgDiff=${"%,.1f".format(avgDiff)}, threshold=$threshold, motion=$result")
+        
+        return result
     }
 
     override fun onCatalystInstanceDestroy() {

@@ -18,6 +18,7 @@ export interface ScreenStatus {
   on: boolean;
   brightness: number;
   screensaverActive: boolean;
+  scheduledSleep: boolean;
 }
 
 export interface WebViewStatus {
@@ -65,7 +66,8 @@ class DeviceControlServiceClass {
   private getScreensaverCallback: GetScreensaverCallback | null = null;
   private currentBrightness: number = 0.5;
   private kioskModeEnabled: boolean = false;
-  private appVersion: string = '1.2.5';
+  private appVersion: string = '1.2.6';
+  private scheduledSleep: boolean = false;
 
   // Register callbacks from KioskScreen
   registerWebViewCallbacks(
@@ -92,6 +94,10 @@ class DeviceControlServiceClass {
 
   setAppVersion(version: string) {
     this.appVersion = version;
+  }
+
+  setScheduledSleep(sleeping: boolean) {
+    this.scheduledSleep = sleeping;
   }
 
   // ==================== READ OPERATIONS ====================
@@ -138,6 +144,7 @@ class DeviceControlServiceClass {
       on: !screensaverActive,
       brightness: Math.round(this.currentBrightness * 100),
       screensaverActive,
+      scheduledSleep: this.scheduledSleep,
     };
   }
 

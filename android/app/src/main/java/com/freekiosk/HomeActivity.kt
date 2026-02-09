@@ -19,21 +19,20 @@ class HomeActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Lire la configuration depuis AsyncStorage
-        val prefs = getSharedPreferences("RCTAsyncLocalStorage", MODE_PRIVATE)
-        val displayMode = prefs.getString("@kiosk_display_mode", "webview")
-        val externalAppPackage = prefs.getString("@kiosk_external_app_package", "")
-        val externalAppActivity = prefs.getString("@kiosk_external_app_activity", "")
+        // Lire la configuration depuis AsyncStorage v2 database
+        val displayMode = getAsyncStorageValue("@kiosk_display_mode", "webview")
+        val externalAppPackage = getAsyncStorageValue("@kiosk_external_app_package", "")
+        val externalAppActivity = getAsyncStorageValue("@kiosk_external_app_activity", "")
         
         // Load tap settings
-        val tapCountStr = prefs.getString("@kiosk_return_tap_count", "5")
-        val tapTimeoutStr = prefs.getString("@kiosk_return_tap_timeout", "1500")
-        val tapCount = try { tapCountStr?.toInt() ?: 5 } catch (e: Exception) { 5 }
-        val tapTimeout = try { tapTimeoutStr?.toLong() ?: 1500L } catch (e: Exception) { 1500L }
+        val tapCountStr = getAsyncStorageValue("@kiosk_return_tap_count", "5")
+        val tapTimeoutStr = getAsyncStorageValue("@kiosk_return_tap_timeout", "1500")
+        val tapCount = try { tapCountStr.toInt() } catch (e: Exception) { 5 }
+        val tapTimeout = try { tapTimeoutStr.toLong() } catch (e: Exception) { 1500L }
         
         // Load return mode settings
-        val returnMode = prefs.getString("@kiosk_return_mode", "tap_anywhere") ?: "tap_anywhere"
-        val buttonPosition = prefs.getString("@kiosk_return_button_position", "bottom-right") ?: "bottom-right"
+        val returnMode = getAsyncStorageValue("@kiosk_return_mode", "tap_anywhere")
+        val buttonPosition = getAsyncStorageValue("@kiosk_return_button_position", "bottom-right")
 
         DebugLog.d("HomeActivity", "Display mode: $displayMode")
         DebugLog.d("HomeActivity", "External app: $externalAppPackage / $externalAppActivity")
@@ -118,5 +117,23 @@ class HomeActivity : AppCompatActivity() {
         super.onResume()
         // Empêcher HomeActivity de rester visible
         finish()
+    }
+
+    private fun getAsyncStorageValue(key: String, defaultValue: String): String {
+        return try {
+            val dbPath = getDatabasePath("AsyncStorage").absolutePath
+            val db = android.database.sqlite.SQLiteDatabase.openDatabase(dbPath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
+            val cursor = db.rawQuery("SELECT value FROM Storage WHERE key = ?", arrayOf(key))
+            val value = if (cursor.moveToFirst()) {
+                cursor.getString(0) ?: defaultValue
+            } else {
+                defaultValue
+            }
+            cursor.close()
+            db.close()
+            value
+        } catch (e: Exception) {
+            defaultValue
+        }
     }
 }

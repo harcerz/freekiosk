@@ -49,6 +49,7 @@ export interface AppStatus {
   autoBrightnessEnabled?: boolean;
   autoBrightnessMin?: number;
   autoBrightnessMax?: number;
+  scheduledSleep?: boolean;
 }
 
 class ApiServiceClass {
@@ -63,6 +64,7 @@ class ApiServiceClass {
     screensaverActive: false,
     screenOn: true, // Assume screen is ON by default
     kioskMode: false,
+    scheduledSleep: false,
   };
   private isInitialized = false;
 

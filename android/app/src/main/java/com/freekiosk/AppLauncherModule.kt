@@ -1,5 +1,6 @@
 package com.freekiosk
 
+import android.app.usage.UsageStatsManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import com.facebook.react.bridge.ReactApplicationContext
@@ -72,18 +73,8 @@ class AppLauncherModule(reactContext: ReactApplicationContext) : ReactContextBas
                 // Send event to React Native
                 sendEvent("onAppLaunched", null)
                 
-                // Broadcast for ADB monitoring (same as ADB auto_start behavior)
-                // Send after short delay to let app start
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    try {
-                        reactApplicationContext.sendBroadcast(Intent("com.freekiosk.EXTERNAL_APP_LAUNCHED").apply {
-                            putExtra("package_name", packageName)
-                        })
-                        DebugLog.d("AppLauncherModule", "Broadcasted EXTERNAL_APP_LAUNCHED: $packageName")
-                    } catch (e: Exception) {
-                        DebugLog.d("AppLauncherModule", "Failed to broadcast: ${e.message}")
-                    }
-                }, 1000)
+                // Broadcast for ADB monitoring - verify app is in foreground before broadcasting
+                verifyAndBroadcastAppLaunched(packageName)
 
                 promise.resolve(true)
             } else {
@@ -158,6 +149,77 @@ class AppLauncherModule(reactContext: ReactApplicationContext) : ReactContextBas
         } catch (e: Exception) {
             promise.reject("ERROR_GET_LABEL", "Failed to get package label: ${e.message}")
         }
+    }
+
+    /**
+     * Verify external app is in foreground before broadcasting EXTERNAL_APP_LAUNCHED
+     * Retries up to 10 times with 500ms delay to ensure app has time to start
+     */
+    private fun verifyAndBroadcastAppLaunched(packageName: String) {
+        val maxRetries = 10
+        val retryDelayMs = 500L
+        var retryCount = 0
+        
+        fun checkAndBroadcast() {
+            try {
+                // Get foreground app using UsageStatsManager (requires PACKAGE_USAGE_STATS permission)
+                val topPackage = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP_MR1) {
+                    val usageStatsManager = reactApplicationContext.getSystemService(android.content.Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
+                    if (usageStatsManager != null) {
+                        val currentTime = System.currentTimeMillis()
+                        val stats = usageStatsManager.queryUsageStats(
+                            android.app.usage.UsageStatsManager.INTERVAL_BEST,
+                            currentTime - 5000,
+                            currentTime
+                        )
+                        stats?.maxByOrNull { it.lastTimeUsed }?.packageName
+                    } else null
+                } else {
+                    // Fallback for older Android
+                    @Suppress("DEPRECATION")
+                    val am = reactApplicationContext.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+                    @Suppress("DEPRECATION")
+                    am?.getRunningTasks(1)?.firstOrNull()?.topActivity?.packageName
+                }
+                
+                if (topPackage == packageName) {
+                    // App is in foreground, broadcast success
+                    reactApplicationContext.sendBroadcast(Intent("com.freekiosk.EXTERNAL_APP_LAUNCHED").apply {
+                        putExtra("package_name", packageName)
+                        putExtra("verified", true)
+                    })
+                    android.util.Log.i("FreeKiosk-ADB", "EXTERNAL_APP_LAUNCHED: $packageName (verified in foreground)")
+                } else if (retryCount < maxRetries) {
+                    // App not yet in foreground, retry
+                    retryCount++
+                    android.util.Log.d("FreeKiosk-ADB", "Waiting for $packageName to be in foreground (attempt $retryCount/$maxRetries, current: $topPackage)")
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ checkAndBroadcast() }, retryDelayMs)
+                } else {
+                    // Max retries reached, broadcast anyway but log warning
+                    reactApplicationContext.sendBroadcast(Intent("com.freekiosk.EXTERNAL_APP_LAUNCHED").apply {
+                        putExtra("package_name", packageName)
+                        putExtra("verified", false)
+                    })
+                    android.util.Log.w("FreeKiosk-ADB", "EXTERNAL_APP_LAUNCHED: $packageName (NOT verified - timeout after ${maxRetries * retryDelayMs}ms, top: $topPackage)")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FreeKiosk-ADB", "Error checking foreground for EXTERNAL_APP_LAUNCHED: ${e.message}")
+                // Broadcast anyway on error
+                try {
+                    reactApplicationContext.sendBroadcast(Intent("com.freekiosk.EXTERNAL_APP_LAUNCHED").apply {
+                        putExtra("package_name", packageName)
+                        putExtra("verified", false)
+                        putExtra("error", e.message)
+                    })
+                    android.util.Log.i("FreeKiosk-ADB", "EXTERNAL_APP_LAUNCHED: $packageName (fallback - error during verification)")
+                } catch (ex: Exception) {
+                    android.util.Log.e("FreeKiosk-ADB", "Failed to broadcast EXTERNAL_APP_LAUNCHED: ${ex.message}")
+                }
+            }
+        }
+        
+        // Start verification after initial delay
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ checkAndBroadcast() }, 500)
     }
 
     private fun sendEvent(eventName: String, params: WritableMap?) {

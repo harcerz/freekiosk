@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlockingRegion } from '../types/blockingOverlay';
+import { ScreenScheduleRule } from '../types/screenScheduler';
 import { saveSecureApiKey, getSecureApiKey, clearSecureApiKey } from './secureStorage';
 
 const KEYS = {
@@ -73,6 +74,15 @@ const KEYS = {
   AUTO_BRIGHTNESS_MAX: '@kiosk_auto_brightness_max',
   AUTO_BRIGHTNESS_UPDATE_INTERVAL: '@kiosk_auto_brightness_update_interval',
   AUTO_BRIGHTNESS_SAVED_MANUAL: '@kiosk_auto_brightness_saved_manual',
+  // Screen Sleep Scheduler
+  SCREEN_SCHEDULER_ENABLED: '@kiosk_screen_scheduler_enabled',
+  SCREEN_SCHEDULER_RULES: '@kiosk_screen_scheduler_rules',
+  SCREEN_SCHEDULER_WAKE_ON_TOUCH: '@kiosk_screen_scheduler_wake_on_touch',
+  // Inactivity Return to Home
+  INACTIVITY_RETURN_ENABLED: '@kiosk_inactivity_return_enabled',
+  INACTIVITY_RETURN_DELAY: '@kiosk_inactivity_return_delay',
+  INACTIVITY_RETURN_RESET_ON_NAV: '@kiosk_inactivity_return_reset_on_nav',
+  INACTIVITY_RETURN_CLEAR_CACHE: '@kiosk_inactivity_return_clear_cache',
   // Legacy keys for backward compatibility
   SCREENSAVER_DELAY: '@screensaver_delay',
   MOTION_DETECTION_ENABLED: '@motion_detection_enabled',
@@ -1345,5 +1355,158 @@ export const StorageService = {
       return null;
     }
   },
+
+  // ============ SCREEN SLEEP SCHEDULER ============
+
+  saveScreenSchedulerEnabled: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.SCREEN_SCHEDULER_ENABLED, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving screen scheduler enabled:', error);
+    }
+  },
+
+  getScreenSchedulerEnabled: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.SCREEN_SCHEDULER_ENABLED);
+      return value ? JSON.parse(value) : false; // Default: OFF
+    } catch (error) {
+      console.error('Error getting screen scheduler enabled:', error);
+      return false;
+    }
+  },
+
+  saveScreenSchedulerRules: async (rules: ScreenScheduleRule[]): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.SCREEN_SCHEDULER_RULES, JSON.stringify(rules));
+    } catch (error) {
+      console.error('Error saving screen scheduler rules:', error);
+    }
+  },
+
+  getScreenSchedulerRules: async (): Promise<ScreenScheduleRule[]> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.SCREEN_SCHEDULER_RULES);
+      return value ? JSON.parse(value) : [];
+    } catch (error) {
+      console.error('Error getting screen scheduler rules:', error);
+      return [];
+    }
+  },
+
+  saveScreenSchedulerWakeOnTouch: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.SCREEN_SCHEDULER_WAKE_ON_TOUCH, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving screen scheduler wake on touch:', error);
+    }
+  },
+
+  getScreenSchedulerWakeOnTouch: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.SCREEN_SCHEDULER_WAKE_ON_TOUCH);
+      return value ? JSON.parse(value) : true; // Default: ON (allow wake on touch)
+    } catch (error) {
+      console.error('Error getting screen scheduler wake on touch:', error);
+      return true;
+    }
+  },
+
+  // ============ INACTIVITY RETURN TO HOME ============
+
+  saveInactivityReturnEnabled: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.INACTIVITY_RETURN_ENABLED, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving inactivity return enabled:', error);
+    }
+  },
+
+  getInactivityReturnEnabled: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.INACTIVITY_RETURN_ENABLED);
+      return value ? JSON.parse(value) : false; // Default: OFF
+    } catch (error) {
+      console.error('Error getting inactivity return enabled:', error);
+      return false;
+    }
+  },
+
+  saveInactivityReturnDelay: async (value: number): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.INACTIVITY_RETURN_DELAY, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving inactivity return delay:', error);
+    }
+  },
+
+  getInactivityReturnDelay: async (): Promise<number> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.INACTIVITY_RETURN_DELAY);
+      return value ? JSON.parse(value) : 60; // Default: 60 seconds
+    } catch (error) {
+      console.error('Error getting inactivity return delay:', error);
+      return 60;
+    }
+  },
+
+  saveInactivityReturnResetOnNav: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.INACTIVITY_RETURN_RESET_ON_NAV, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving inactivity return reset on nav:', error);
+    }
+  },
+
+  getInactivityReturnResetOnNav: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.INACTIVITY_RETURN_RESET_ON_NAV);
+      return value ? JSON.parse(value) : true; // Default: ON
+    } catch (error) {
+      console.error('Error getting inactivity return reset on nav:', error);
+      return true;
+    }
+  },
+
+  saveInactivityReturnClearCache: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.INACTIVITY_RETURN_CLEAR_CACHE, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving inactivity return clear cache:', error);
+    }
+  },
+
+  getInactivityReturnClearCache: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.INACTIVITY_RETURN_CLEAR_CACHE);
+      return value ? JSON.parse(value) : false; // Default: OFF
+    } catch (error) {
+      console.error('Error getting inactivity return clear cache:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Batch load all settings in a single multiGet call.
+   * This is much faster than 50+ sequential getItem calls (single bridge crossing).
+   * Returns a Map for O(1) key lookup.
+   */
+  getAllSettings: async (): Promise<Map<string, string | null>> => {
+    try {
+      const allKeys = Object.values(KEYS);
+      const pairs = await AsyncStorage.multiGet(allKeys);
+      const map = new Map<string, string | null>();
+      for (const [key, value] of pairs) {
+        map.set(key, value);
+      }
+      return map;
+    } catch (error) {
+      console.error('Error batch loading settings:', error);
+      return new Map();
+    }
+  },
+
+  /** Expose KEYS for external multiGet consumers */
+  KEYS,
 
 };

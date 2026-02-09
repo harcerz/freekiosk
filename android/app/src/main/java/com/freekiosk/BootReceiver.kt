@@ -47,12 +47,12 @@ class BootReceiver : BroadcastReceiver() {
      */
     private fun isAutoLaunchEnabled(context: Context): Boolean {
         return try {
-            // AsyncStorage stores data in SQLite database "RKStorage" with table "catalystLocalStorage"
-            val dbPath = context.getDatabasePath("RKStorage").absolutePath
+            // AsyncStorage v2 stores data in SQLite database "AsyncStorage" with table "Storage"
+            val dbPath = context.getDatabasePath("AsyncStorage").absolutePath
             val db = SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READONLY)
             
             val cursor = db.rawQuery(
-                "SELECT value FROM catalystLocalStorage WHERE key = ?",
+                "SELECT value FROM Storage WHERE key = ?",
                 arrayOf("@kiosk_auto_launch")
             )
             
