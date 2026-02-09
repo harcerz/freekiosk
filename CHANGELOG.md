@@ -14,74 +14,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ***
 
+## [1.2.7] - 2026-02-09
+
+### Fixed
+- 🛡️ **Android 16 System UI Hardening**: Improved fullscreen immersive mode for modern Android versions
+  - Added `WindowInsetsController` API for Android 11+ (API 30+) with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`
+  - Hides status bars, navigation bars, and system bars using modern `WindowInsets.Type` API
+  - Added `SYSTEM_UI_FLAG_LOW_PROFILE` fallback for older Android versions
+  - Prevents system UI elements from appearing when swiping from screen edges
+
+***
+
 ## [1.2.6] - 2026-02-09
 
 ### Added
-- 🏠 **Inactivity Return to Home**: Automatically navigate back to start page after a period of inactivity
-  - Configurable timeout (5–3600 seconds)
-  - Timer resets on every touch/scroll/click interaction in the WebView
-  - Option to reset timer when a new page loads within the WebView
-  - Option to clear cache on return (full reload)
-  - Smart detection: won't reload if already on the start page
-  - Automatically paused during Screensaver, URL Rotation, and URL Planner
-  - New settings section in General tab: "Inactivity Return"
-
-- 🌙 **Screen Sleep Scheduler**: Automatically turn off screen during scheduled time periods
-  - Create multiple schedule rules with custom names
-  - Set specific days of the week for each rule
-  - Define sleep and wake times (supports midnight-crossing schedules)
-  - Option to wake screen on touch during scheduled sleep
-  - Native AlarmManager integration for reliable wake-up (survives Doze mode)
-  - Smart handling for Device Owner and non-Device Owner modes
-  - PIN bypass support for automatic wake-up
-  - Visual feedback with midnight-crossing badge for overnight schedules
-  - New settings section in Display tab: "Screen Sleep Schedule"
-
+- 🔍 **Background App Monitoring**: Auto-relaunch monitoring service for External App mode
+  - Automatically detects when locked app exits (crash, timeout, manual close)
+  - Brings FreeKiosk back to foreground and relaunches the external app
+  - Uses UsageStatsManager for accurate foreground detection (requires Device Owner or manual permission)
+  - Monitoring activates when auto-relaunch is enabled in settings
+  - Check every 2 seconds in background without impacting performance
 
 ### Fixed
-- 🔄 **Update Installation on Samsung Devices**: Resolved installation hanging issue
-  - Added silent installation support for Device Owner mode using PackageInstaller API
-  - Improved feedback message explaining installation may require user action
-  - Added UpdateInstallReceiver to monitor installation status
-  - Better fallback to manual installation when silent install is not available
-  - **Automatic app restart** after successful installation (both Device Owner and normal modes)
-  - Fixes issue where "Installation in progress..." popup never closed on Samsung Galaxy devices
 - 🚀 **ADB Configuration Kiosk Mode**: Fixed kiosk mode not activating on first launch with `auto_start=true`
   - External app now launches AFTER kiosk mode is properly activated
   - Ensures lock task whitelist includes both FreeKiosk and external app before launch
   - Proper restart sequence: save config → restart FreeKiosk → activate kiosk → launch app
 - 📡 **EXTERNAL_APP_LAUNCHED Broadcast**: Improved broadcast reliability for ADB monitoring
-  - Fixed broadcast invisible in release builds (`DebugLog` was silent — now uses `android.util.Log`)
   - Now verifies app is in foreground before broadcasting (up to 10 retries over 5 seconds)
   - Adds `verified` boolean to broadcast extras to indicate foreground verification status
-  - Logcat tag: `FreeKiosk-ADB` — filter with `adb logcat -s "FreeKiosk-ADB"`
   - Consistent behavior whether launched via ADB auto_start or normal app flow
-- 🗄️ **AsyncStorage v2 Compatibility**: Fixed ADB configuration not persisting after restart
-  - AsyncStorage v2 uses Room database (`AsyncStorage/Storage`) instead of legacy `RKStorage/catalystLocalStorage`
-  - ADB config now writes to SharedPreferences as "pending config" bridge
-  - KioskScreen reads and applies pending config to AsyncStorage on startup
-  - All native-side reads (kiosk_enabled, display_mode, etc.) migrated to new database format
-- 🔑 **PIN via ADB Config**: PIN is now correctly saved to Android Keystore (PBKDF2 hashed)
-  - Previously PIN was only written to AsyncStorage where the secure PIN system couldn't find it
-  - KioskScreen now routes `@kiosk_pin` from pending config to `saveSecurePin()` instead of AsyncStorage
-  - PIN appears correctly in Settings after ADB provisioning
-- 🎯 **ADB `test_mode` Parameter**: New `--es test_mode "false"` for production deployment
-  - Controls physical back button behavior (blocked when `false`)
-  - Automatically sets `back_button_mode` to `immediate` (auto-relaunch) or `test` (stay on FreeKiosk)
-  - Test mode synced to native SharedPrefs on every app start via `OverlayServiceModule.setTestMode()`
-- 🔄 **ADB `back_button_mode` Parameter**: New `--es back_button_mode "immediate"` for fine control
-  - Supports `test` (no auto-relaunch), `timer` (countdown then relaunch), `immediate` (instant relaunch)
-  - Can be set independently or automatically via `test_mode`
-- 🔧 **ADB `auto_start` Boolean Fix**: `--ez auto_start true` now works correctly
-  - Previously only `--es auto_launch "true"` (string) was handled
-  - Now supports both `--ez auto_start true` (boolean) and `--es auto_launch "true"` (string)
-- ⚡ **Low-End Device Performance**: Reduced resource usage to prevent crashes/unresponsiveness
-  - Foreground monitoring interval: 2s → 5s (reduced UsageStatsManager polling overhead)
-  - Status bar updates: 5s → 15s (time/battery don't need sub-second accuracy)
-  - Cached Bluetooth `isConnected()` reflection method (avoid repeated reflection per bonded device)
-  - Settings loading: 50+ sequential `getItem` calls replaced by single `multiGet` batch (1 bridge call)
-  - `onStartCommand` guard: avoid unnecessary overlay destroy/recreate on `START_STICKY` restart
-  - Skip full overlay recreation when parameters haven't changed
+  - Better debugging with detailed logs showing retry attempts and current foreground app
 - 🌐 **REST API Reboot Endpoint**: Fixed `/api/reboot` not executing the reboot
   - Reboot now runs natively via `DevicePolicyManager.reboot()` instead of through JS bridge
   - No longer depends on React Native bridge being active (works with screen off)

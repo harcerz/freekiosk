@@ -219,34 +219,14 @@ class MainActivity : ReactActivity() {
       // Configurer les features Lock Task based on settings
       if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
         var lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_NONE
-        
-        // Bloquer les fonctionnalités système qui permettent de sortir du kiosk
-        lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD
-        lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_HOME
-        lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW  // Bloque le menu Recents/multitâche Samsung
-        
         if (allowPowerButton) {
           lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
         }
         if (allowNotifications) {
           lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
         }
-        
-        // Pour Android 9+ (API 28+), bloquer le démarrage d'activités en arrière-plan
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-          lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_BLOCK_ACTIVITY_START_IN_TASK
-        }
-        
         devicePolicyManager.setLockTaskFeatures(adminComponent, lockTaskFeatures)
         DebugLog.d("MainActivity", "Lock task features set: powerButton=$allowPowerButton, notifications=$allowNotifications (flags=$lockTaskFeatures)")
-      }
-      
-      // Désactiver le keyguard (écran de verrouillage) pour empêcher les menus Samsung
-      try {
-        devicePolicyManager.setKeyguardDisabled(adminComponent, true)
-        DebugLog.d("MainActivity", "Keyguard disabled successfully")
-      } catch (e: Exception) {
-        DebugLog.w("MainActivity", "Failed to disable keyguard: ${e.message}")
       }
 
       val samsungUpdateApps = arrayOf(

@@ -11,7 +11,7 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/Version-1.2.6-blue.svg" alt="Version 1.2.6">
+    <img src="https://img.shields.io/badge/Version-1.2.7-blue.svg" alt="Version 1.2.7">
     <a href="https://github.com/rushb-fr/freekiosk/releases"><img src="https://img.shields.io/github/downloads/rushb-fr/freekiosk/total.svg" alt="Downloads"></a>
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
@@ -261,7 +261,13 @@ Done! Your tablet is now in kiosk mode.
 
 ## 🗺️ Roadmap
 
-### ✅ v1.2.6 (Feb 2026) - Screen Sleep Scheduler, Inactivity Return & Improvements 🆕
+### ✅ v1.2.7 (Feb 2026) - Android 16 System UI Hardening 🆕
+- 🛡️ **System UI Hardening**: Improved fullscreen immersive mode for modern Android versions
+  - `WindowInsetsController` API for Android 11+ with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`
+  - `SYSTEM_UI_FLAG_LOW_PROFILE` fallback for older versions
+  - Prevents system UI elements from appearing when swiping from screen edges
+
+### ✅ v1.2.6 (Feb 2026) - Screen Sleep Scheduler, Inactivity Return & Improvements
 - 🏠 **Inactivity Return to Home**: Auto-navigate back to start page after inactivity timeout
   - Configurable timeout (5–3600 seconds), resets on touch/scroll/click
   - Option to clear cache on return and reset timer on new page load
