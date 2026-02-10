@@ -12,10 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+***
+
+## [1.2.8] - 2026-02-10
+
+### Added
+- 🖨️ **WebView Print Support**: Native Android printing via `window.print()` interception
+  - Supports all connected printers (WiFi, Bluetooth, USB, Cloud Print, PDF)
+- 🔗 **URL Filtering (Blacklist / Whitelist)**: Control which URLs users can navigate to
+  - Blacklist or Whitelist mode with wildcard pattern support
+  - Works with traditional navigation and SPA/client-side routing
+- ⬅️ **Back Button Mode via ADB**: `back_button_mode` parameter synced to native SharedPreferences
+- ⚠️ **Usage Stats Permission Warning**: Permission check and grant button in Settings
+
 ### Fixed
-- **Settings Buttons Broken in Lock Mode**: Fixed "Open System Settings", "Grant Usage Access" and camera permission buttons not working when lock mode is active
-  - Lock task is now temporarily stopped before opening system settings, allowing Android to navigate away
-  - Lock task is automatically re-enabled when the user saves settings
+- 🔧 **Back Button Fix**: Fixed back button completely blocked when `test_mode=false`
+- 🔀 **ADB Config Fix**: `lock_package` now takes priority over `url` for display mode
+- 🔄 **Auto Launch on Boot Fix**: Fixed wrong AsyncStorage database name in native Kotlin files
+- 🔒 **Settings Buttons Fix**: Lock task temporarily stopped before opening system settings
 
 ***
 
