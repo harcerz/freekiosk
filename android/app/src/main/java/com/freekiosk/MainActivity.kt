@@ -1118,6 +1118,9 @@ class MainActivity : ReactActivity() {
   override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
     super.onConfigurationChanged(newConfig)
     
+    // Re-hide system UI after rotation (system bars can reappear on config change)
+    hideSystemUI()
+    
     // Notify blocking overlay manager about configuration change
     try {
       val manager = BlockingOverlayManager.getInstance(this)

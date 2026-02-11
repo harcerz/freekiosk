@@ -1310,6 +1310,11 @@ class OverlayService : Service() {
         try {
             destroyOverlay()
             createOverlay()
+            // Recreate status bar (destroyOverlay removes it but createOverlay does not rebuild it)
+            if (statusBarEnabled) {
+                createStatusBar()
+                startStatusUpdates()
+            }
         } catch (e: Exception) {
             DebugLog.e("OverlayService", "Error recreating overlay on config change: ${e.message}")
         }

@@ -14,6 +14,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ***
 
+## [1.2.9] - 2026-02-11
+
+### Fixed
+- 📱 **Status Bar Rotation Fix**: Fixed custom status bar disappearing after screen rotation in external app mode
+  - OverlayService now recreates the status bar overlay after configuration changes
+  - MainActivity re-hides Android system bars on rotation to prevent them from reappearing
+- 🔧 **Lock Mode "Device Owner not configured" False Warning**: Fixed JS bundle out of sync with native Kotlin module
+  - `startLockTask` call in bundled JS had 2 parameters instead of 3 (missing `allowNotifications`)
+  - React Native bridge could not match the method signature, causing a silent exception
+  - Resulted in false "Device Owner not configured" warning even when Device Owner was properly set
+- 🖱️ **5-Tap During Page Load**: Fixed 5-tap not working while WebView is loading or when page fails to load
+  - Invisible touch zone in bottom-right corner during loading and error states
+  - Tapping it counts as a 5-tap interaction, allowing access to settings even without network
+  - Touch zone disappears automatically once the page loads successfully (JS-based detection takes over)
+
+***
+
 ## [1.2.8] - 2026-02-10
 
 ### Added
@@ -28,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - 🔧 **Back Button Fix**: Fixed back button completely blocked when `test_mode=false`
 - 🔀 **ADB Config Fix**: `lock_package` now takes priority over `url` for display mode
-- 🔄 **Auto Launch on Boot Fix**: Fixed wrong AsyncStorage database name in native Kotlin files
+-  **Auto Launch on Boot Fix**: Fixed wrong AsyncStorage database name in native Kotlin files
 - 🔒 **Settings Buttons Fix**: Lock task temporarily stopped before opening system settings
 
 ***

@@ -57,6 +57,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
+  const [pageLoaded, setPageLoaded] = useState<boolean>(false);
   const [blockedUrlMessage, setBlockedUrlMessage] = useState<string | null>(null);
   const blockedUrlTimerRef = useRef<any>(null);
   const isGoingBackRef = useRef<boolean>(false); // Prevent goBack loop for URL filter
@@ -332,10 +333,15 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     setError(true);
     setLoading(false);
     
+    // Load about:blank to clear the native Android error page
+    // This is the ONLY way to prevent the native WebView error page from covering our overlay
+    webViewRef.current?.injectJavaScript('window.location.href = "about:blank"; true;');
+    
     if (autoReload) {
       setTimeout(() => {
-        webViewRef.current?.reload();
         setError(false);
+        setLoading(true);
+        setPageLoaded(false);
       }, 5000);
     }
   };
@@ -347,7 +353,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   const handleReload = (): void => {
     setError(false);
     setLoading(true);
-    webViewRef.current?.reload();
+    setPageLoaded(false);
   };
 
   const handleNavigateToSettings = (): void => {
@@ -433,7 +439,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
             {/* Footer */}
             <Text style={styles.footerText}>
-              Version 1.2.8 • by Rushb
+              Version 1.2.9 • by Rushb
             </Text>
           </Animated.View>
         </ScrollView>
@@ -445,7 +451,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     <View style={styles.container}>
       <WebView
         ref={webViewRef}
-        source={{ uri: url }}
+        source={{ uri: error ? 'about:blank' : url }}
         style={styles.webview}
         
         // User Agent - Mimic Chrome to ensure proper storage APIs
@@ -456,8 +462,11 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
         onHttpError={handleHttpError}
 
         onLoadStart={() => {
-          setLoading(true);
-          setError(false);
+          // Don't reset error state when loading about:blank (error recovery)
+          if (!error) {
+            setLoading(true);
+            setPageLoaded(false);
+          }
 
           // Clear any existing timeout
           if (loadingTimeoutRef.current) {
@@ -466,12 +475,18 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
           // Fire OS/Fire Tablet workaround: Force hide loading spinner after 10s
           // This handles cases where onLoadEnd doesn't fire on SPAs or redirects
-          loadingTimeoutRef.current = setTimeout(() => {
-            setLoading(false);
-          }, 10000);
+          if (!error) {
+            loadingTimeoutRef.current = setTimeout(() => {
+              setLoading(false);
+            }, 10000);
+          }
         }}
         onLoadEnd={() => {
-          setLoading(false);
+          // Don't mark as loaded when loading about:blank during error state
+          if (!error) {
+            setLoading(false);
+            setPageLoaded(true);
+          }
 
           // Clear timeout since load completed normally
           if (loadingTimeoutRef.current) {
@@ -481,8 +496,9 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
         }}
         onLoadProgress={({ nativeEvent }) => {
           // For SPAs like Nuxt/Home Assistant, hide spinner when fully loaded
-          if (nativeEvent.progress === 1) {
+          if (nativeEvent.progress === 1 && !error) {
             setLoading(false);
+            setPageLoaded(true);
 
             // Clear timeout since we've reached 100%
             if (loadingTimeoutRef.current) {
@@ -583,6 +599,18 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0066cc" />
           <Text style={styles.loadingText}>Loading...</Text>
+          {/* Fallback settings button inside loading overlay */}
+          <TouchableOpacity
+            style={styles.fallbackSettingsButton}
+            activeOpacity={0.7}
+            onPress={() => {
+              if (onUserInteraction) {
+                onUserInteraction({ isTap: true, x: 0, y: 0 });
+              }
+            }}
+          >
+            <Text style={styles.fallbackSettingsButtonText}>⚙️</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -598,6 +626,18 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           )}
           <TouchableOpacity style={styles.reloadButton} onPress={handleReload}>
             <Text style={styles.reloadText}>🔄 Reload Now</Text>
+          </TouchableOpacity>
+          {/* Fallback settings button inside error overlay */}
+          <TouchableOpacity
+            style={styles.fallbackSettingsButton}
+            activeOpacity={0.7}
+            onPress={() => {
+              if (onUserInteraction) {
+                onUserInteraction({ isTap: true, x: 0, y: 0 });
+              }
+            }}
+          >
+            <Text style={styles.fallbackSettingsButtonText}>⚙️</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -828,6 +868,23 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  fallbackSettingsButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  fallbackSettingsButtonText: {
+    fontSize: 20,
+    opacity: 0,
   },
 });
 

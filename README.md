@@ -11,7 +11,7 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/Version-1.2.8-blue.svg" alt="Version 1.2.8">
+    <img src="https://img.shields.io/badge/Version-1.2.9-blue.svg" alt="Version 1.2.9">
     <a href="https://github.com/rushb-fr/freekiosk/releases"><img src="https://img.shields.io/github/downloads/rushb-fr/freekiosk/total.svg" alt="Downloads"></a>
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
@@ -261,7 +261,11 @@ Done! Your tablet is now in kiosk mode.
 
 ## 🗺️ Roadmap
 
-### ✅ v1.2.8 (Feb 2026) - Print, URL Filtering & Boot Fixes 🆕
+### ✅ v1.2.9 (Feb 2026) - Status Bar & Lock Mode Fixes 🆕
+- 📱 **Status Bar Rotation Fix**: Fixed custom status bar disappearing after screen rotation in external app mode
+- 🔧 **Lock Mode False Warning Fix**: Fixed "Device Owner not configured" false warning due to JS/native method signature mismatch
+
+### ✅ v1.2.8 (Feb 2026) - Print, URL Filtering & Boot Fixes
 - 🖨️ **WebView Print Support**: Native Android printing via `window.print()` interception
   - Supports all connected printers (WiFi, Bluetooth, USB, Cloud Print, PDF)
 - 🔗 **URL Filtering (Blacklist / Whitelist)**: Control which URLs users can navigate to
