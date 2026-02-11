@@ -40,23 +40,58 @@ const BACKUP_KEYS = [
   '@kiosk_back_button_mode',
   '@kiosk_back_button_timer_delay',
   '@kiosk_keyboard_mode',
+  // PIN Mode
+  '@kiosk_pin_mode',
+  // URL Rotation
   '@kiosk_url_rotation_enabled',
   '@kiosk_url_rotation_list',
   '@kiosk_url_rotation_interval',
+  // URL Planner
   '@kiosk_url_planner_enabled',
   '@kiosk_url_planner_events',
+  // REST API
   '@kiosk_rest_api_enabled',
   '@kiosk_rest_api_port',
   // Note: @kiosk_rest_api_key is handled separately via Keychain (secure storage)
   '@kiosk_rest_api_allow_control',
   '@kiosk_allow_power_button',
   '@kiosk_allow_notifications',
+  // Return to Settings
+  '@kiosk_return_tap_count',
+  '@kiosk_return_tap_timeout',
+  '@kiosk_return_mode',
+  '@kiosk_return_button_position',
+  '@kiosk_volume_up_5tap_enabled',
+  // Blocking Overlays
+  '@kiosk_blocking_overlays_enabled',
+  '@kiosk_blocking_overlays_regions',
+  // Camera preference for motion detection
+  '@motion_camera_position',
+  // WebView Back Button
+  '@kiosk_webview_back_button_enabled',
+  '@kiosk_webview_back_button_x_percent',
+  '@kiosk_webview_back_button_y_percent',
   // Auto-Brightness
   '@kiosk_auto_brightness_enabled',
   '@kiosk_auto_brightness_min',
   '@kiosk_auto_brightness_max',
   '@kiosk_auto_brightness_update_interval',
   '@kiosk_auto_brightness_saved_manual',
+  // Screen Sleep Scheduler
+  '@kiosk_screen_scheduler_enabled',
+  '@kiosk_screen_scheduler_rules',
+  '@kiosk_screen_scheduler_wake_on_touch',
+  // Inactivity Return to Home
+  '@kiosk_inactivity_return_enabled',
+  '@kiosk_inactivity_return_delay',
+  '@kiosk_inactivity_return_reset_on_nav',
+  '@kiosk_inactivity_return_clear_cache',
+  '@kiosk_inactivity_return_scroll_top',
+  // URL Filtering (Blacklist/Whitelist)
+  '@kiosk_url_filter_enabled',
+  '@kiosk_url_filter_mode',
+  '@kiosk_url_filter_list',
+  '@kiosk_url_filter_show_feedback',
   // Legacy keys
   '@screensaver_delay',
   '@motion_detection_enabled',

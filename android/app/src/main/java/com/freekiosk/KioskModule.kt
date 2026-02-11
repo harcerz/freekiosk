@@ -118,6 +118,8 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                                 }
                                 if (allowNotifications) {
                                     lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
+                                    // Android requires HOME feature when NOTIFICATIONS is enabled
+                                    lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_HOME
                                 }
                                 dpm.setLockTaskFeatures(adminComponent, lockTaskFeatures)
                                 android.util.Log.d("KioskModule", "Lock task features set: powerButton=$allowPowerButton, notifications=$allowNotifications (flags=$lockTaskFeatures)")

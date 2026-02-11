@@ -152,6 +152,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [inactivityReturnDelay, setInactivityReturnDelay] = useState<string>('60');
   const [inactivityReturnResetOnNav, setInactivityReturnResetOnNav] = useState<boolean>(true);
   const [inactivityReturnClearCache, setInactivityReturnClearCache] = useState<boolean>(false);
+  const [inactivityReturnScrollTop, setInactivityReturnScrollTop] = useState<boolean>(true);
   
   // URL Filtering states
   const [urlFilterEnabled, setUrlFilterEnabled] = useState<boolean>(false);
@@ -410,7 +411,9 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     setInactivityReturnEnabled(savedInactivityReturnEnabled);
     setInactivityReturnDelay(String(savedInactivityReturnDelay));
     setInactivityReturnResetOnNav(savedInactivityReturnResetOnNav);
+    const savedInactivityReturnScrollTop = await StorageService.getInactivityReturnScrollTop();
     setInactivityReturnClearCache(savedInactivityReturnClearCache);
+    setInactivityReturnScrollTop(savedInactivityReturnScrollTop);
 
     // URL Filtering settings
     const savedUrlFilterEnabled = await StorageService.getUrlFilterEnabled();
@@ -806,6 +809,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       await StorageService.saveInactivityReturnDelay(isNaN(returnDelay) ? 60 : Math.max(5, Math.min(3600, returnDelay)));
       await StorageService.saveInactivityReturnResetOnNav(inactivityReturnResetOnNav);
       await StorageService.saveInactivityReturnClearCache(inactivityReturnClearCache);
+      await StorageService.saveInactivityReturnScrollTop(inactivityReturnScrollTop);
     } else {
       await StorageService.saveAutoReload(false);
       await StorageService.saveKioskEnabled(kioskEnabled);
@@ -903,17 +907,15 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       try {
         const packageToWhitelist = displayMode === 'external_app' ? externalAppPackage : null;
         await KioskModule.startLockTask(packageToWhitelist, allowPowerButton, allowNotifications);
-        const message = displayMode === 'external_app'
-          ? 'Configuration saved\nLock mode enabled'
-          : 'Configuration saved\nScreen pinning enabled';
-        Alert.alert('Success', message, [
-          { text: 'OK', onPress: () => navigation.navigate('Kiosk') },
-        ]);
       } catch (error) {
-        Alert.alert('Warning', 'Configuration saved\nDevice Owner not configured - lock mode unavailable', [
-          { text: 'OK', onPress: () => navigation.navigate('Kiosk') },
-        ]);
+        console.warn('[Settings] startLockTask error (non-blocking):', error);
       }
+      const message = displayMode === 'external_app'
+        ? 'Configuration saved\nLock mode enabled'
+        : 'Configuration saved\nScreen pinning enabled';
+      Alert.alert('Success', message, [
+        { text: 'OK', onPress: () => navigation.navigate('Kiosk') },
+      ]);
     } else {
       try {
         await KioskModule.stopLockTask();
@@ -997,6 +999,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
               setInactivityReturnDelay('60');
               setInactivityReturnResetOnNav(true);
               setInactivityReturnClearCache(false);
+              setInactivityReturnScrollTop(true);
 
               try {
                 await KioskModule.stopLockTask();
@@ -1192,6 +1195,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             onInactivityReturnResetOnNavChange={setInactivityReturnResetOnNav}
             inactivityReturnClearCache={inactivityReturnClearCache}
             onInactivityReturnClearCacheChange={setInactivityReturnClearCache}
+            inactivityReturnScrollTop={inactivityReturnScrollTop}
+            onInactivityReturnScrollTopChange={setInactivityReturnScrollTop}
             onBackToKiosk={() => navigation.navigate('Kiosk')}
           />
         );

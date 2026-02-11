@@ -12,6 +12,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+***
+
+## [1.2.10] - 2026-02-11
+
+### Added
+- ⏱️ **Inactivity Return - Scroll to Top Toggle**: New optional behavior for when already on start page
+  - Added "Scroll to Top on Start Page" toggle (enabled by default)
+  - When enabled and already on start page, smoothly scrolls to top instead of doing nothing
+- 🔗 **URL Filtering (Blacklist / Whitelist)**: Control which URLs users can navigate to within the kiosk WebView
+  - Choose between **Blacklist** mode (block specific URLs) or **Whitelist** mode (allow only specific URLs)
+  - Wildcard pattern support (e.g., `*.example.com/*`, `freekiosk.app/download`)
+  - Patterns without protocol are automatically matched with `http://` and `https://`
+  - Main kiosk URL is always protected and cannot be blocked
+  - Empty whitelist = strictest mode (only main URL allowed)
+  - Works with both traditional navigation and SPA/client-side routing (pushState)
+  - Optional visual feedback toast when a URL is blocked
+  - Popup/new window URLs are also filtered
+
+### Fixed
+- 🔗 **URL Filtering - Form Submits and JS Buttons**: Fixed form submissions and JavaScript buttons being blocked in whitelist mode
+  - Filter now compares origin + pathname instead of just origin
+  - Same-page navigations (query params, hash changes, form submits) are always allowed
+  - Trailing slashes are normalized (e.g., `https://example.com` and `https://example.com/` are treated as identical)
+  - Only navigation to different pages on the same domain requires whitelist match
+- 📡 **NFC Monitoring Fix**: Fixed "flicking back to blue screen" when NFC is enabled in kiosk mode
+  - Foreground monitoring detected transient `com.android.nfc` package as a wrong app and triggered a relaunch loop
+  - NFC system package is now filtered from monitoring checks only when NFC mode is active
+  - No impact on monitoring behavior when NFC is disabled
+- 💾 **Backup/Restore Missing Settings**: Fixed 20 settings keys not being included in export/import backups
+  - Added missing URL filtering settings (blacklist/whitelist lists and configuration)
+  - Added missing screen scheduler, inactivity return, blocking overlays settings
+  - Added missing WebView back button, camera position, return-to-settings preferences
+  - PIN mode setting now properly backed up and restored
+
 ***
 
 ## [1.2.9] - 2026-02-11

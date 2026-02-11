@@ -37,6 +37,7 @@ interface WebViewComponentProps {
 
 export interface WebViewComponentRef {
   goBack: () => void;
+  scrollToTop: () => void;
 }
 
 const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(({ 
@@ -99,16 +100,30 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     // Blacklist with empty list = nothing to block
     if (urlFilterMode === 'blacklist' && compiledFilterPatterns.length === 0) return false;
 
-    // Always allow the main kiosk URL (regardless of mode)
-    // This prevents the kiosk from blocking its own page
-    if (targetUrl === url || targetUrl === url + '/' || url === targetUrl + '/') return false;
+    // Helper: extract origin + pathname (without query/hash), normalize trailing slash
+    const getOriginPath = (u: string): string => {
+      const m = u.match(/^(https?:\/\/[^/?#]+)([^?#]*)/i);
+      if (!m) return u.toLowerCase();
+      let path = m[2] || '/';
+      // Normalize: add leading /, remove trailing / (except for root)
+      if (!path.startsWith('/')) path = '/' + path;
+      if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+      return (m[1] + path).toLowerCase();
+    };
+
+    // Always allow navigation to the same page (same origin + path)
+    // This allows form submits, JS buttons, hash/query changes on the SAME page
+    const targetOriginPath = getOriginPath(targetUrl);
+    const mainOriginPath = getOriginPath(url);
+    
+    if (targetOriginPath === mainOriginPath) return false;
 
     if (urlFilterMode === 'blacklist') {
       // Blacklist: block if URL matches any pattern
       return compiledFilterPatterns.some(regex => regex.test(targetUrl));
     } else {
-      // Whitelist: block everything except main URL + matched patterns
-      // Empty list = only main URL allowed (strictest mode)
+      // Whitelist: block everything except same-page + matched patterns
+      // Empty list = only same-page allowed (strictest mode)
       if (compiledFilterPatterns.length === 0) return true;
       // Check if target matches any whitelist pattern
       if (compiledFilterPatterns.some(regex => regex.test(targetUrl))) return false;
@@ -128,11 +143,16 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     blockedUrlTimerRef.current = setTimeout(() => setBlockedUrlMessage(null), 2000);
   }, [urlFilterShowFeedback]);
 
-  // Expose goBack method to parent via ref
+  // Expose goBack and scrollToTop methods to parent via ref
   useImperativeHandle(ref, () => ({
     goBack: () => {
       if (webViewRef.current) {
         webViewRef.current.goBack();
+      }
+    },
+    scrollToTop: () => {
+      if (webViewRef.current) {
+        webViewRef.current.injectJavaScript('window.scrollTo({top: 0, behavior: "smooth"}); true;');
       }
     }
   }));
@@ -439,7 +459,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
             {/* Footer */}
             <Text style={styles.footerText}>
-              Version 1.2.9 • by Rushb
+              Version 1.2.10 • by Rushb
             </Text>
           </Animated.View>
         </ScrollView>

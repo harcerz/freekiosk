@@ -137,6 +137,7 @@ class OverlayService : Service() {
     // Auto-relaunch monitoring
     private var lockedPackage: String? = null // Package name of the locked app to monitor
     private var autoRelaunchEnabled = false // Whether auto-relaunch is enabled
+    private var nfcEnabled = false // Whether NFC is enabled (to filter NFC system package from monitoring)
     private val foregroundMonitorHandler = Handler(Looper.getMainLooper())
     private val FOREGROUND_CHECK_INTERVAL = 5000L // Check every 5 seconds (was 2s, reduced for low-end device performance)
     // BroadcastReceiver pour détecter quand l'écran s'allume
@@ -330,6 +331,11 @@ class OverlayService : Service() {
         intent.getBooleanExtra("AUTO_RELAUNCH", false).let { enabled ->
             autoRelaunchEnabled = enabled
             DebugLog.d("OverlayService", "Auto-relaunch enabled: $autoRelaunchEnabled")
+        }
+        
+        intent.getBooleanExtra("NFC_ENABLED", false).let { enabled ->
+            nfcEnabled = enabled
+            DebugLog.d("OverlayService", "NFC enabled (monitoring filter): $nfcEnabled")
         }
         
         // Start monitoring if auto-relaunch is enabled and we have a locked package
@@ -1123,6 +1129,12 @@ class OverlayService : Service() {
                 return
             }
             foregroundNullCount = 0
+            
+            // When NFC is enabled, ignore transient NFC system package to prevent false relaunch
+            if (nfcEnabled && topPackage.contains(".nfc")) {
+                android.util.Log.d("OverlayService", "NFC package detected ($topPackage) - ignoring (NFC mode active)")
+                return
+            }
             
             // If locked app is not in foreground and FreeKiosk is not in foreground
             if (topPackage != lockedPackage && topPackage != packageName) {

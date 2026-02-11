@@ -226,6 +226,8 @@ class MainActivity : ReactActivity() {
         }
         if (allowNotifications) {
           lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
+          // Android requires HOME feature when NOTIFICATIONS is enabled
+          lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_HOME
         }
         devicePolicyManager.setLockTaskFeatures(adminComponent, lockTaskFeatures)
         DebugLog.d("MainActivity", "Lock task features set: powerButton=$allowPowerButton, notifications=$allowNotifications (flags=$lockTaskFeatures)")

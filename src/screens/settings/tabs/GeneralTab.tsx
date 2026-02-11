@@ -91,6 +91,8 @@ interface GeneralTabProps {
   onInactivityReturnResetOnNavChange: (value: boolean) => void;
   inactivityReturnClearCache: boolean;
   onInactivityReturnClearCacheChange: (value: boolean) => void;
+  inactivityReturnScrollTop: boolean;
+  onInactivityReturnScrollTopChange: (value: boolean) => void;
   
   // Navigation
   onBackToKiosk: () => void;
@@ -149,6 +151,8 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
   onInactivityReturnResetOnNavChange,
   inactivityReturnClearCache,
   onInactivityReturnClearCacheChange,
+  inactivityReturnScrollTop,
+  onInactivityReturnScrollTopChange,
   onBackToKiosk,
 }) => {
   return (
@@ -469,10 +473,17 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
                 hint="Clear the WebView cache when returning to the start page (full reload)"
               />
               
+              <SettingsSwitch
+                label="Scroll to Top on Start Page"
+                value={inactivityReturnScrollTop}
+                onValueChange={onInactivityReturnScrollTopChange}
+                hint="Smoothly scroll back to the top of the page when already on the start page"
+              />
+              
               <SettingsInfoBox variant="info">
                 <Text style={styles.infoText}>
                   ℹ️ The timer resets on every touch interaction.{`\n`}
-                  If already on the start page, no reload will occur.{`\n`}
+                  If already on the start page and scroll-to-top is enabled, the page will scroll up.{`\n`}
                   Disabled during URL Rotation, URL Planner, and Screensaver.
                 </Text>
               </SettingsInfoBox>

@@ -176,7 +176,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
             <View style={styles.divider} />
             <SettingsSwitch
               label="📡 Allow Notifications (NFC)"
-              hint="Enable notification dispatch to allow NFC tag reading in external apps. Note: this also makes the notification panel accessible."
+              hint="Enable notification dispatch to allow NFC tag reading in external apps. ⚠️ Note: Android will show the Home button (non-functional) and make the notification panel accessible when this is enabled."
               value={allowNotifications}
               onValueChange={onAllowNotificationsChange}
             />

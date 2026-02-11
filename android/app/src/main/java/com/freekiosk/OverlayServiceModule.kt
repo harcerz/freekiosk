@@ -20,7 +20,7 @@ class OverlayServiceModule(reactContext: ReactApplicationContext) :
     override fun getName(): String = NAME
 
     @ReactMethod
-    fun startOverlayService(tapCount: Int, tapTimeout: Int, returnMode: String, buttonPosition: String, lockedPackage: String?, autoRelaunch: Boolean, promise: Promise) {
+    fun startOverlayService(tapCount: Int, tapTimeout: Int, returnMode: String, buttonPosition: String, lockedPackage: String?, autoRelaunch: Boolean, nfcEnabled: Boolean, promise: Promise) {
         try {
             // Démarrer le service même sans permission overlay
             // Le service peut toujours fonctionner en arrière-plan (timer test mode, retour auto)
@@ -41,7 +41,8 @@ class OverlayServiceModule(reactContext: ReactApplicationContext) :
             if (lockedPackage != null && lockedPackage.isNotEmpty()) {
                 serviceIntent.putExtra("LOCKED_PACKAGE", lockedPackage)
                 serviceIntent.putExtra("AUTO_RELAUNCH", autoRelaunch)
-                DebugLog.d("OverlayServiceModule", "Auto-relaunch monitoring enabled for: $lockedPackage (autoRelaunch=$autoRelaunch)")
+                serviceIntent.putExtra("NFC_ENABLED", nfcEnabled)
+                DebugLog.d("OverlayServiceModule", "Auto-relaunch monitoring enabled for: $lockedPackage (autoRelaunch=$autoRelaunch, nfcEnabled=$nfcEnabled)")
             }
             
             reactApplicationContext.startService(serviceIntent)

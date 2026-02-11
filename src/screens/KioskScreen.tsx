@@ -120,6 +120,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const [inactivityReturnDelay, setInactivityReturnDelay] = useState<number>(60); // seconds
   const [inactivityReturnResetOnNav, setInactivityReturnResetOnNav] = useState<boolean>(true);
   const [inactivityReturnClearCache, setInactivityReturnClearCache] = useState<boolean>(false);
+  const [inactivityReturnScrollTop, setInactivityReturnScrollTop] = useState<boolean>(true);
   const inactivityReturnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentWebViewUrlRef = useRef<string>(''); // Track current WebView URL for return logic
 
@@ -1152,10 +1153,12 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedInactivityReturnDelay = num(K.INACTIVITY_RETURN_DELAY, 60000);
       const savedInactivityReturnResetOnNav = bool(K.INACTIVITY_RETURN_RESET_ON_NAV, true);
       const savedInactivityReturnClearCache = bool(K.INACTIVITY_RETURN_CLEAR_CACHE, false);
+      const savedInactivityReturnScrollTop = bool(K.INACTIVITY_RETURN_SCROLL_TOP, true);
       setInactivityReturnEnabled(savedInactivityReturnEnabled);
       setInactivityReturnDelay(savedInactivityReturnDelay);
       setInactivityReturnResetOnNav(savedInactivityReturnResetOnNav);
       setInactivityReturnClearCache(savedInactivityReturnClearCache);
+      setInactivityReturnScrollTop(savedInactivityReturnScrollTop);
       
       // Load URL Filtering settings
       const savedUrlFilterEnabled = bool(K.URL_FILTER_ENABLED, false);
@@ -1356,7 +1359,12 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         console.log(`[InactivityReturn] TIME'S UP — currentUrl="${normalizedCurrent}" vs baseUrl="${normalizedBase}" — same=${normalizedCurrent === normalizedBase}`);
 
         if (normalizedCurrent === normalizedBase) {
-          console.log('[InactivityReturn] Already on start page, will check again');
+          if (inactivityReturnScrollTop && webViewRef.current) {
+            console.log('[InactivityReturn] Already on start page — scrolling to top');
+            webViewRef.current.scrollToTop();
+          } else {
+            console.log('[InactivityReturn] Already on start page, scroll-to-top disabled');
+          }
         } else {
           console.log(`[InactivityReturn] 🔄 RETURNING to start page NOW`);
           // Always force a full WebView reload — because setUrl alone won't work
@@ -1377,7 +1385,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     inactivityReturnTimerRef.current = setTimeout(tick, delayMs);
 
     return () => clearInactivityReturnTimer();
-  }, [inactivityReturnEnabled, inactivityReturnDelay, inactivityReturnClearCache, displayMode, baseUrl, url, isScreensaverActive, urlRotationEnabled, urlRotationList.length, activeScheduledEvent]);
+  }, [inactivityReturnEnabled, inactivityReturnDelay, inactivityReturnClearCache, inactivityReturnScrollTop, displayMode, baseUrl, url, isScreensaverActive, urlRotationEnabled, urlRotationList.length, activeScheduledEvent]);
 
   // Ref for 5-tap debounce (prevent multiple events per tap)
   const lastTapTimeRef = useRef<number>(0);
@@ -1608,9 +1616,10 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
           finalReturnMode, 
           finalButtonPosition,
           packageName, // Pass locked package for monitoring
-          autoRelaunchApp // Pass auto-relaunch setting
+          autoRelaunchApp, // Pass auto-relaunch setting
+          allowNotifications // Pass NFC enabled flag for monitoring filter
         );
-        console.log(`[KioskScreen] OverlayService started with tapCount=${finalTapCount}, tapTimeout=${finalTapTimeout}, mode=${finalReturnMode}, position=${finalButtonPosition}, package=${packageName}, autoRelaunch=${autoRelaunchApp}`);
+        console.log(`[KioskScreen] OverlayService started with tapCount=${finalTapCount}, tapTimeout=${finalTapTimeout}, mode=${finalReturnMode}, position=${finalButtonPosition}, package=${packageName}, autoRelaunch=${autoRelaunchApp}, nfcEnabled=${allowNotifications}`);
       } catch (overlayError) {
         console.warn('[KioskScreen] Failed to start overlay service:', overlayError);
         // Continue anyway - l'app externe peut toujours être lancée

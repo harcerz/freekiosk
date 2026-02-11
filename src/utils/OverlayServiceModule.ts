@@ -7,7 +7,8 @@ interface OverlayServiceModuleType {
     returnMode: string, 
     buttonPosition: string,
     lockedPackage?: string | null,
-    autoRelaunch?: boolean
+    autoRelaunch?: boolean,
+    nfcEnabled?: boolean
   ): Promise<boolean>;
   stopOverlayService(): Promise<boolean>;
   setButtonOpacity(opacity: number): Promise<boolean>;

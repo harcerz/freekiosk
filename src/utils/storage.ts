@@ -83,6 +83,7 @@ const KEYS = {
   INACTIVITY_RETURN_DELAY: '@kiosk_inactivity_return_delay',
   INACTIVITY_RETURN_RESET_ON_NAV: '@kiosk_inactivity_return_reset_on_nav',
   INACTIVITY_RETURN_CLEAR_CACHE: '@kiosk_inactivity_return_clear_cache',
+  INACTIVITY_RETURN_SCROLL_TOP: '@kiosk_inactivity_return_scroll_top',
   // URL Filtering (Blacklist/Whitelist)
   URL_FILTER_ENABLED: '@kiosk_url_filter_enabled',
   URL_FILTER_MODE: '@kiosk_url_filter_mode', // 'blacklist' | 'whitelist'
@@ -275,6 +276,7 @@ export const StorageService = {
         KEYS.INACTIVITY_RETURN_DELAY,
         KEYS.INACTIVITY_RETURN_RESET_ON_NAV,
         KEYS.INACTIVITY_RETURN_CLEAR_CACHE,
+        KEYS.INACTIVITY_RETURN_SCROLL_TOP,
         // URL Filtering
         KEYS.URL_FILTER_ENABLED,
         KEYS.URL_FILTER_MODE,
@@ -1506,6 +1508,24 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting inactivity return clear cache:', error);
       return false;
+    }
+  },
+
+  saveInactivityReturnScrollTop: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.INACTIVITY_RETURN_SCROLL_TOP, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving inactivity return scroll top:', error);
+    }
+  },
+
+  getInactivityReturnScrollTop: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.INACTIVITY_RETURN_SCROLL_TOP);
+      return value ? JSON.parse(value) : true; // Default: ON
+    } catch (error) {
+      console.error('Error getting inactivity return scroll top:', error);
+      return true;
     }
   },
 
