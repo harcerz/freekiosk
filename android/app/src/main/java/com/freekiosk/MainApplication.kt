@@ -29,6 +29,7 @@ class MainApplication : Application(), ReactApplication {
           add(BlockingOverlayPackage())
           add(AutoBrightnessPackage())
           add(PrintPackage())
+          add(AccessibilityPackage())
         },
     )
   }

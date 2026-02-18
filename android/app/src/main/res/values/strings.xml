@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">FreeKiosk</string>
+    <string name="accessibility_service_description">FreeKiosk uses this service to send keyboard input and remote control commands to apps running on this device. This is required for the REST API remote control feature to work in external app mode.</string>
 </resources>

@@ -145,6 +145,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const [urlFilterMode, setUrlFilterMode] = useState<'blacklist' | 'whitelist'>('blacklist');
   const [urlFilterList, setUrlFilterList] = useState<string[]>([]);
   const [urlFilterShowFeedback, setUrlFilterShowFeedback] = useState<boolean>(false);
+  const [pdfViewerEnabled, setPdfViewerEnabled] = useState<boolean>(false);
 
   // AppState listener - détecte quand l'app revient au premier plan
   useEffect(() => {
@@ -1185,6 +1186,10 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       setUrlFilterList(savedUrlFilterList);
       setUrlFilterShowFeedback(savedUrlFilterShowFeedback);
       
+      // Load PDF Viewer setting
+      const savedPdfViewerEnabled = bool(K.PDF_VIEWER_ENABLED, false);
+      setPdfViewerEnabled(savedPdfViewerEnabled);
+      
       // Start auto-brightness if enabled (only in webview mode)
       if (savedAutoBrightnessEnabled && savedDisplayMode === 'webview') {
         try {
@@ -1774,6 +1779,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
             urlFilterMode={urlFilterEnabled ? urlFilterMode : undefined}
             urlFilterPatterns={urlFilterEnabled ? urlFilterList : undefined}
             urlFilterShowFeedback={urlFilterShowFeedback}
+            pdfViewerEnabled={pdfViewerEnabled}
           />
         </>
       ) : (

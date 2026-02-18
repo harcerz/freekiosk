@@ -33,6 +33,7 @@ interface WebViewComponentProps {
   urlFilterMode?: string; // 'whitelist' or 'blacklist'
   urlFilterPatterns?: string[]; // URL patterns to filter
   urlFilterShowFeedback?: boolean; // Show feedback when URL is blocked
+  pdfViewerEnabled?: boolean; // Enable inline PDF viewing via PDF.js
 }
 
 export interface WebViewComponentRef {
@@ -53,7 +54,8 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   onPageNavigated,
   urlFilterMode,
   urlFilterPatterns,
-  urlFilterShowFeedback = false
+  urlFilterShowFeedback = false,
+  pdfViewerEnabled = false
 }, ref) => {
   const navigation = useNavigation<NavigationProp>();
   const webViewRef = useRef<WebView>(null);
@@ -254,6 +256,28 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     // Touch events avec throttling (for screensaver only, not for tap counting)
     document.addEventListener('touchstart', sendInteraction, true);
     document.addEventListener('touchmove', sendInteraction, true);
+
+    // PDF link interception: prevent <a download href="...pdf"> from triggering
+    // the native Android DownloadManager — instead force a real navigation so
+    // onShouldStartLoadWithRequest can redirect to the local PDF viewer.
+    if (${pdfViewerEnabled ? 'true' : 'false'}) {
+      function interceptPdfLinks() {
+        document.querySelectorAll('a[href]').forEach(function(a) {
+          if (a.__pdfIntercepted) return;
+          var href = (a.getAttribute('href') || '').toLowerCase().split('?')[0].split('#')[0];
+          var hasDownload = a.hasAttribute('download');
+          if (href.endsWith('.pdf') || hasDownload) {
+            a.__pdfIntercepted = true;
+            // Strip the download attribute so Android doesn't trigger the DownloadManager
+            a.removeAttribute('download');
+          }
+        });
+      }
+      // Run immediately and watch for DOM changes (SPAs)
+      interceptPdfLinks();
+      var pdfObserver = new MutationObserver(interceptPdfLinks);
+      pdfObserver.observe(document.body, { childList: true, subtree: true });
+    }
   })();
   true;
   `;
@@ -345,6 +369,11 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           PrintModule.printWebView(data.title || 'FreeKiosk Print')
             .then(() => console.log('[WebView] Print job started'))
             .catch((err: any) => console.error('[WebView] Print failed:', err));
+        } else if (data.type === 'PDF_VIEWER_CLOSE') {
+          // User closed PDF viewer, go back to previous page
+          if (webViewRef.current) {
+            webViewRef.current.goBack();
+          }
         }
       } catch (e) {
         // Ignore parse errors
@@ -466,7 +495,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
             {/* Footer */}
             <Text style={styles.footerText}>
-              Version 1.2.11 • by Rushb
+              Version 1.2.12 • by Rushb
             </Text>
           </Animated.View>
         </ScrollView>
@@ -484,7 +513,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
         // User Agent - Mimic Chrome to ensure proper storage APIs
         userAgent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         
-        originWhitelist={['http://*', 'https://*']}
+        originWhitelist={pdfViewerEnabled ? ['http://*', 'https://*', 'file://*'] : ['http://*', 'https://*']}
         mixedContentMode="always"
         onHttpError={handleHttpError}
 
@@ -547,11 +576,63 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
         onShouldStartLoadWithRequest={(request: ShouldStartLoadRequest) => {
           // Security: Block dangerous URL schemes
           const urlLower = request.url.toLowerCase();
+          
+          // Allow file:// only for our bundled PDF viewer
+          if (urlLower.startsWith('file:///android_asset/pdfjs/')) {
+            return true;
+          }
+          
           if (urlLower.startsWith('file://') ||
               urlLower.startsWith('javascript:') ||
               urlLower.startsWith('data:')) {
             console.warn('[FreeKiosk] Blocked dangerous URL scheme:', request.url);
             return false;
+          }
+
+          // PDF Viewer: intercept PDF links and redirect to local viewer
+          if (pdfViewerEnabled && request.isTopFrame) {
+            // Check direct PDF URLs (path ends with .pdf)
+            const urlPath = urlLower.split('?')[0].split('#')[0];
+            let pdfUrl: string | null = null;
+
+            if (urlPath.endsWith('.pdf')) {
+              pdfUrl = request.url;
+            }
+
+            // Check Google redirect URLs: google.com/url?...url=<pdf_url>...
+            if (!pdfUrl && (urlLower.includes('google.com/url?') || urlLower.includes('google.com/url&'))) {
+              try {
+                const queryStart = request.url.indexOf('?');
+                if (queryStart !== -1) {
+                  const queryStr = request.url.substring(queryStart + 1);
+                  const params = queryStr.split('&');
+                  for (const param of params) {
+                    const [key, ...valueParts] = param.split('=');
+                    if (key === 'url' || key === 'q') {
+                      const targetUrl = decodeURIComponent(valueParts.join('='));
+                      const targetPath = targetUrl.toLowerCase().split('?')[0].split('#')[0];
+                      if (targetPath.endsWith('.pdf')) {
+                        pdfUrl = targetUrl;
+                        break;
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                // Invalid URL, ignore
+              }
+            }
+
+            if (pdfUrl) {
+              console.log('[FreeKiosk] PDF detected, opening in viewer:', pdfUrl);
+              const viewerUrl = `file:///android_asset/pdfjs/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
+              if (webViewRef.current) {
+                webViewRef.current.injectJavaScript(
+                  `window.location.href = ${JSON.stringify(viewerUrl)}; true;`
+                );
+              }
+              return false;
+            }
           }
 
           // URL Filtering (blacklist/whitelist)
@@ -613,10 +694,12 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           }
         }}
 
-        // Security: Disable file access to prevent reading local files
-        allowFileAccess={false}
-        allowUniversalAccessFromFileURLs={false}
-        allowFileAccessFromFileURLs={false}
+        // Security: File access disabled by default.
+        // When PDF viewer is enabled, allow file access for loading bundled PDF.js from assets
+        // and allow universal access so PDF.js can fetch remote PDF files.
+        allowFileAccess={pdfViewerEnabled}
+        allowUniversalAccessFromFileURLs={pdfViewerEnabled}
+        allowFileAccessFromFileURLs={pdfViewerEnabled}
 
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback={true}

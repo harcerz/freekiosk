@@ -12,9 +12,11 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.Promise
-import android.app.Instrumentation
+import android.accessibilityservice.AccessibilityService
+import android.os.Build
 import android.os.PowerManager
 import android.view.WindowManager
+import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.modules.core.DeviceEventManagerModule
 
 class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
@@ -355,16 +357,28 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                 }
             }
             
-            // Send key event in background thread
-            Thread {
+            // Try AccessibilityService first (works cross-app on all ROMs)
+            if (FreeKioskAccessibilityService.isRunning()) {
+                FreeKioskAccessibilityService.sendKey(keyCode)
+                android.util.Log.d("KioskModule", "Sent remote key via AccessibilityService: $key (code: $keyCode)")
+                promise.resolve(true)
+                return
+            }
+            // Fallback to Activity dispatchKeyEvent (works only in FreeKiosk's own Activity)
+            UiThreadUtil.runOnUiThread {
                 try {
-                    val inst = Instrumentation()
-                    inst.sendKeyDownUpSync(keyCode)
-                    android.util.Log.d("KioskModule", "Sent remote key: $key (code: $keyCode)")
+                    val activity = reactApplicationContext.currentActivity
+                    if (activity != null) {
+                        activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                        activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                        android.util.Log.d("KioskModule", "Sent remote key via activity: $key (code: $keyCode)")
+                    } else {
+                        android.util.Log.e("KioskModule", "Cannot send key: no activity and AccessibilityService not running")
+                    }
                 } catch (e: Exception) {
                     android.util.Log.e("KioskModule", "Failed to send key: ${e.message}")
                 }
-            }.start()
+            }
             
             promise.resolve(true)
         } catch (e: Exception) {
@@ -457,16 +471,33 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                 activity.runOnUiThread {
                     try {
                         val dpm = reactApplicationContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-                        if (dpm.isDeviceOwnerApp(reactApplicationContext.packageName)) {
-                            // Device Owner: truly lock/turn off the screen
-                            // Release wakeLock to allow screen off
+                        val adminComponent = ComponentName(reactApplicationContext, DeviceAdminReceiver::class.java)
+                        if (dpm.isDeviceOwnerApp(reactApplicationContext.packageName) || dpm.isAdminActive(adminComponent)) {
+                            // Device Owner OR Device Admin: lockNow() is available to both
                             wakeLock?.release()
                             wakeLock = null
                             dpm.lockNow()
-                            android.util.Log.d("KioskModule", "Screen turned OFF via Device Owner lockNow()")
+                            val method = if (dpm.isDeviceOwnerApp(reactApplicationContext.packageName)) "Device Owner" else "Device Admin"
+                            android.util.Log.d("KioskModule", "Screen turned OFF via $method lockNow()")
                             promise.resolve(true)
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && FreeKioskAccessibilityService.isRunning()) {
+                            // AccessibilityService fallback (API 28+): truly lock screen without Device Owner
+                            wakeLock?.release()
+                            wakeLock = null
+                            val ok = FreeKioskAccessibilityService.performAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                            if (ok) {
+                                android.util.Log.d("KioskModule", "Screen locked via AccessibilityService GLOBAL_ACTION_LOCK_SCREEN")
+                                promise.resolve(true)
+                            } else {
+                                // GLOBAL_ACTION_LOCK_SCREEN failed, fall through to brightness fallback
+                                val layoutParams = activity.window.attributes
+                                layoutParams.screenBrightness = 0.001f
+                                activity.window.attributes = layoutParams
+                                android.util.Log.d("KioskModule", "GLOBAL_ACTION_LOCK_SCREEN failed, dimmed brightness as fallback")
+                                promise.resolve(true)
+                            }
                         } else {
-                            // Non-Device Owner: dim brightness to 0 (screen appears black)
+                            // Last resort: dim brightness to 0 (screen appears black)
                             // IMPORTANT: Do NOT clear FLAG_KEEP_SCREEN_ON!
                             // The screen must stay "on" internally so JS timers keep running
                             // and can trigger the wake-up at the scheduled time.
@@ -474,7 +505,7 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                             layoutParams.screenBrightness = 0.001f  // Near-zero, screen appears black
                             activity.window.attributes = layoutParams
                             
-                            android.util.Log.d("KioskModule", "Screen dimmed to near-0 brightness (no Device Owner, FLAG_KEEP_SCREEN_ON preserved)")
+                            android.util.Log.d("KioskModule", "Screen dimmed to near-0 brightness (no Device Owner, no AccessibilityService)")
                             promise.resolve(true)
                         }
                     } catch (e: Exception) {

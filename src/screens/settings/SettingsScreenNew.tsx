@@ -161,6 +161,9 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [urlFilterList, setUrlFilterList] = useState<string[]>([]);
   const [urlFilterShowFeedback, setUrlFilterShowFeedback] = useState<boolean>(false);
   
+  // PDF Viewer state
+  const [pdfViewerEnabled, setPdfViewerEnabled] = useState<boolean>(false);
+  
   // Update states
   const [checkingUpdate, setCheckingUpdate] = useState<boolean>(false);
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
@@ -427,6 +430,10 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     setUrlFilterMode(savedUrlFilterMode);
     setUrlFilterList(savedUrlFilterList);
     setUrlFilterShowFeedback(savedUrlFilterShowFeedback);
+
+    // PDF Viewer setting
+    const savedPdfViewerEnabled = await StorageService.getPdfViewerEnabled();
+    setPdfViewerEnabled(savedPdfViewerEnabled);
   };
 
   const loadCertificates = async (): Promise<void> => {
@@ -879,6 +886,9 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     await StorageService.saveUrlFilterList(urlFilterList);
     await StorageService.saveUrlFilterShowFeedback(urlFilterShowFeedback);
 
+    // Save PDF Viewer setting
+    await StorageService.savePdfViewerEnabled(pdfViewerEnabled);
+
     // Update overlay settings
     if (displayMode === 'external_app') {
       const opacity = overlayButtonVisible ? 1.0 : 0.0;
@@ -1155,6 +1165,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             }}
             autoReload={autoReload}
             onAutoReloadChange={setAutoReload}
+            pdfViewerEnabled={pdfViewerEnabled}
+            onPdfViewerEnabledChange={setPdfViewerEnabled}
             urlRotationEnabled={urlRotationEnabled}
             onUrlRotationEnabledChange={setUrlRotationEnabled}
             urlRotationList={urlRotationList}

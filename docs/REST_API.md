@@ -313,24 +313,26 @@ Turn screen off.
 
 > ⚠️ **Device Owner Required for Full Screen Control**
 > 
-> | Feature | Without Device Owner | With Device Owner |
-> |---------|---------------------|-------------------|
-> | `screen/off` | ⚠️ Dims to 0% brightness (screen stays on) | ✅ Actually turns off screen via `lockNow()` |
-> | `screen/on` | Restores brightness | Wakes device from sleep |
-> | Screen state detection | ✅ `"on"` reflects physical state via PowerManager | ✅ `"on"` reflects physical state (all methods) |
-> | Screensaver overlay | ✅ `"screensaverActive"` independent of `"on"` | ✅ `"screensaverActive"` independent of `"on"` |
-> | HTTP Server availability | ✅ Always accessible (v1.2.4+) | ✅ Always accessible |
-> | `reboot` | ❌ Not available | ✅ Works |
+> | Feature | No privileges | Device Admin | AccessibilityService (API 28+) | Device Owner |
+> |---------|--------------|--------------|-------------------------------|---------------|
+> | `screen/off` | ⚠️ Dims to 0% brightness | ✅ `lockNow()` | ✅ `GLOBAL_ACTION_LOCK_SCREEN` | ✅ `lockNow()` |
+> | `screen/on` | Restores brightness | Wakes device | Wakes device | Wakes device |
+> | `lock` | ❌ Error | ✅ Works | ✅ Works | ✅ Works |
+> | `reboot` | ❌ Not available | ❌ Not available | ❌ Not available | ✅ Works |
+> | Kiosk mode | ⚠️ User prompt | ⚠️ User prompt | ⚠️ User prompt | ✅ Silent |
 > 
 > **Understanding `"on"` vs `"screensaverActive"`:**  
 > - `"on"` reports the **physical screen state** (PowerManager.isInteractive)
 > - `"screensaverActive"` reports whether the **screensaver overlay** is showing
 > - These are **independent**: screensaver can be active while screen is physically on
 > 
-> **Why can't regular apps turn off the screen?**  
-> Android security prevents non-system apps from turning off the screen to protect against malicious apps. Only Device Owner apps have this privilege via `DevicePolicyManager.lockNow()`. Without Device Owner, `/api/screen/off` can only dim the screen to minimum brightness.
-> 
-> **Workaround**: Use the physical power button to turn off the screen, then use `/api/screen/on` to turn it back on remotely.
+> **FreeKiosk uses a 4-tier approach for screen off:**  
+> 1. **Device Owner**: `DevicePolicyManager.lockNow()` — true screen off  
+> 2. **Device Admin**: `DevicePolicyManager.lockNow()` — also works, no Device Owner needed  
+> 3. **AccessibilityService (API 28+)**: `GLOBAL_ACTION_LOCK_SCREEN` — works without any admin privilege  
+> 4. **Fallback**: Dims brightness to 0% (screen stays on but appears black)  
+>
+> This means FreeKiosk can coexist with an existing MDM that holds Device Owner — just activate Device Admin or the AccessibilityService and screen lock works fully.
 > 
 > To enable Device Owner mode, see [Installation Guide](INSTALL.md#advanced-install-device-owner-mode).
 
@@ -405,9 +407,9 @@ Launch an external app.
 Reboot device (requires Device Owner mode). Executed natively without JS bridge dependency.
 
 #### `GET|POST /api/lock`
-Lock device screen (requires Device Owner mode). Uses `DevicePolicyManager.lockNow()` to truly turn off the screen.
+Lock device screen. Uses `DevicePolicyManager.lockNow()` (Device Owner) or `GLOBAL_ACTION_LOCK_SCREEN` (AccessibilityService, API 28+) to truly turn off the screen.
 
-> ⚠️ Without Device Owner, this endpoint returns an error. Use `/api/screen/off` as a fallback (dims to 0 brightness).
+> ⚠️ Without Device Owner or AccessibilityService, this endpoint returns an error. Use `/api/screen/off` as a fallback (dims to 0 brightness).
 
 #### `GET|POST /api/restart-ui`
 Restart the FreeKiosk app UI. Calls `activity.recreate()` to fully restart the React Native activity without rebooting the device. Useful for troubleshooting UI issues remotely.
@@ -562,7 +564,35 @@ Response:
 }
 ```
 
-> ⚠️ **Limitation**: Keyboard emulation uses `Instrumentation` which injects events into the FreeKiosk app process. Keys work within the FreeKiosk WebView but may not propagate to external apps.
+> #### 📱 Accessibility Service (recommended for External App mode)
+>
+> By default, keyboard emulation only works inside FreeKiosk's WebView. To inject keys into **external apps** (e.g., when using External App display mode), you need to enable the **FreeKiosk Accessibility Service**:
+>
+> 1. Go to **Settings → Advanced → Accessibility Service** and tap **"Open Accessibility Settings"**
+> 2. In Android settings, find **FreeKiosk** under "Installed Services" and enable it
+> 3. The status indicator in FreeKiosk settings will show **"● Active"** when ready
+>
+> **Device Owner shortcut**: If FreeKiosk is set as Device Owner, you can enable the service automatically without visiting Android settings — just tap **"Enable Automatically"** in Advanced Settings.
+>
+> **How it works**: When the Accessibility Service is active, FreeKiosk uses it for all keyboard injection (both WebView and external apps). When disabled, it falls back to `dispatchKeyEvent()` which only works within FreeKiosk's own Activity.
+>
+> **Privacy ROMs** (e/OS, LineageOS, CalyxOS, GrapheneOS): The Accessibility Service approach works on all ROMs, unlike the `Instrumentation` method which requires a signature-level permission that privacy ROMs block.
+>
+> #### 📊 Android Version Compatibility
+>
+> The injection method depends on the device's Android version:
+>
+> | Feature | Android 13+ (API 33+) | Android 5–12 (API 21–32) |
+> |---|---|---|
+> | **Back / Home / Recents** | ✅ `performGlobalAction()` | ✅ `performGlobalAction()` |
+> | **Printable keys** (a-z, 0-9, symbols) | ✅ `InputMethod.sendKeyEvent()` | ✅ `ACTION_SET_TEXT` (appends char) |
+> | **Backspace** | ✅ `InputMethod.sendKeyEvent()` | ✅ `ACTION_SET_TEXT` (removes last char) |
+> | **Text input** | ✅ `InputMethod.commitText()` | ✅ `ACTION_SET_TEXT` (appends text) |
+> | **Shift + letter** (e.g. Shift+A → 'A') | ✅ `InputMethod.sendKeyEvent()` | ✅ `ACTION_SET_TEXT` (shifted char) |
+> | **Non-printable keys** (arrows, Tab, Escape, F1-F12) | ✅ `InputMethod.sendKeyEvent()` | ⚠️ Limited (`input keyevent` — requires root) |
+> | **Ctrl/Alt combos** (Ctrl+C, Alt+F4) | ✅ `InputMethod.sendKeyEvent()` | ⚠️ Limited (meta state lost) |
+>
+> **Summary**: On Android 13+, everything works via InputMethod APIs. On Android 5–12, most common operations (typing text, printable keys, backspace, Shift+letter, navigation) work via `ACTION_SET_TEXT`. Only non-printable keys and Ctrl/Alt shortcuts are limited on older devices.
 
 ### GPS Location (GET)
 

@@ -1,7 +1,6 @@
 package com.freekiosk.api
 
 import android.app.ActivityManager
-import android.app.Instrumentation
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -33,8 +32,11 @@ import android.widget.Toast
 import com.facebook.react.bridge.*
 import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import android.accessibilityservice.AccessibilityService
+import android.os.Build
 import com.freekiosk.DeviceAdminReceiver
 import com.freekiosk.CameraPhotoModule
+import com.freekiosk.FreeKioskAccessibilityService
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -667,19 +669,39 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             "lockDevice" -> {
                 return try {
                     val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-                    if (dpm.isDeviceOwnerApp(reactContext.packageName)) {
+                    val adminComp = android.content.ComponentName(reactContext, DeviceAdminReceiver::class.java)
+                    if (dpm.isDeviceOwnerApp(reactContext.packageName) || dpm.isAdminActive(adminComp)) {
                         dpm.lockNow()
-                        Log.d(TAG, "Device locked via Device Owner API")
+                        val method = if (dpm.isDeviceOwnerApp(reactContext.packageName)) "DeviceOwner" else "DeviceAdmin"
+                        Log.d(TAG, "Device locked via $method lockNow()")
                         JSONObject().apply {
                             put("executed", true)
                             put("command", command)
+                            put("method", method)
+                        }
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && FreeKioskAccessibilityService.isRunning()) {
+                        // AccessibilityService fallback (API 28+)
+                        val ok = FreeKioskAccessibilityService.performAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                        if (ok) {
+                            Log.d(TAG, "Device locked via AccessibilityService GLOBAL_ACTION_LOCK_SCREEN")
+                            JSONObject().apply {
+                                put("executed", true)
+                                put("command", command)
+                                put("method", "AccessibilityService")
+                            }
+                        } else {
+                            JSONObject().apply {
+                                put("executed", false)
+                                put("command", command)
+                                put("error", "GLOBAL_ACTION_LOCK_SCREEN failed")
+                            }
                         }
                     } else {
-                        Log.w(TAG, "Lock device failed: not Device Owner")
+                        Log.w(TAG, "Lock device failed: not Device Owner and no AccessibilityService")
                         JSONObject().apply {
                             put("executed", false)
                             put("command", command)
-                            put("error", "Lock device requires Device Owner mode")
+                            put("error", "Lock device requires Device Owner mode or AccessibilityService (API 28+)")
                         }
                     }
                 } catch (e: Exception) {
@@ -728,15 +750,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                         put("error", "Unknown key: $key. Use a-z, 0-9, f1-f12, space, tab, enter, escape, backspace, delete, etc.")
                     }
                 }
-                Thread {
-                    try {
-                        val inst = Instrumentation()
-                        inst.sendKeyDownUpSync(keyCode)
-                        Log.d(TAG, "Keyboard key sent: $key (code: $keyCode)")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to send keyboard key: ${e.message}")
-                    }
-                }.start()
+                dispatchKeyDown(keyCode)
                 return JSONObject().apply {
                     put("executed", true)
                     put("command", command)
@@ -1093,22 +1107,38 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     wakeLock?.release()
                     wakeLock = null
                     
-                    // Try Device Owner lockNow() first (truly turns off screen)
+                    // Try Device Owner/Admin lockNow() first (truly turns off screen)
                     val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-                    if (dpm.isDeviceOwnerApp(reactContext.packageName)) {
-                        // Device Owner can truly lock/turn off the screen
+                    val adminComp = android.content.ComponentName(reactContext, DeviceAdminReceiver::class.java)
+                    if (dpm.isDeviceOwnerApp(reactContext.packageName) || dpm.isAdminActive(adminComp)) {
+                        // Device Owner OR Device Admin: lockNow() is available to both
                         dpm.lockNow()
-                        Log.d(TAG, "Screen turned OFF via Device Owner lockNow()")
+                        val method = if (dpm.isDeviceOwnerApp(reactContext.packageName)) "Device Owner" else "Device Admin"
+                        Log.d(TAG, "Screen turned OFF via $method lockNow()")
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && FreeKioskAccessibilityService.isRunning()) {
+                        // AccessibilityService fallback (API 28+): truly lock screen without Device Owner
+                        wakeLock?.release()
+                        wakeLock = null
+                        val ok = FreeKioskAccessibilityService.performAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                        if (ok) {
+                            Log.d(TAG, "Screen locked via AccessibilityService GLOBAL_ACTION_LOCK_SCREEN")
+                        } else {
+                            // Failed, fall through to brightness fallback
+                            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            val layoutParams = activity.window.attributes
+                            layoutParams.screenBrightness = 0f
+                            activity.window.attributes = layoutParams
+                            Log.d(TAG, "GLOBAL_ACTION_LOCK_SCREEN failed, dimmed brightness as fallback")
+                        }
                     } else {
-                        // Fallback: dim brightness to absolute minimum
-                        // Clear FLAG_KEEP_SCREEN_ON to allow screen to turn off
+                        // Last resort: dim brightness to absolute minimum
                         activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         
                         val layoutParams = activity.window.attributes
                         layoutParams.screenBrightness = 0f
                         activity.window.attributes = layoutParams
                         
-                        Log.d(TAG, "Screen dimmed to 0 brightness (no Device Owner)")
+                        Log.d(TAG, "Screen dimmed to 0 brightness (no Device Owner, no AccessibilityService)")
                     }
                 }
             } catch (e: Exception) {
@@ -1140,7 +1170,67 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    // ==================== Keyboard Emulation ====================
+    // ==================== Key Dispatch Helpers ====================
+
+    /**
+     * Dispatch a simple key press (DOWN + UP) via the current Activity.
+     * Works on all ROMs including e/OS, LineageOS, CalyxOS, GrapheneOS.
+     * No Instrumentation / INJECT_EVENTS permission needed.
+     */
+    private fun dispatchKeyDown(keyCode: Int) {
+        // Try AccessibilityService first (works cross-app on all ROMs)
+        if (FreeKioskAccessibilityService.isRunning()) {
+            FreeKioskAccessibilityService.sendKey(keyCode)
+            return
+        }
+        // Fallback to Activity dispatchKeyEvent (works only in FreeKiosk's own Activity)
+        UiThreadUtil.runOnUiThread {
+            try {
+                val activity = reactContext.currentActivity
+                if (activity != null) {
+                    activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                    activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                    Log.d(TAG, "Dispatched key via activity: $keyCode")
+                } else {
+                    Log.e(TAG, "Cannot dispatch key: no activity and AccessibilityService not running")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to dispatch key: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Dispatch a key press with modifier meta state (e.g., Ctrl+C, Alt+F4).
+     * Constructs full KeyEvent with meta flags and dispatches via Activity.
+     */
+    private fun dispatchKeyWithMeta(keyCode: Int, metaState: Int) {
+        // Try AccessibilityService first (works cross-app on all ROMs)
+        if (FreeKioskAccessibilityService.isRunning()) {
+            FreeKioskAccessibilityService.sendKeyWithMeta(keyCode, metaState)
+            return
+        }
+        // Fallback to Activity dispatchKeyEvent (works only in FreeKiosk's own Activity)
+        UiThreadUtil.runOnUiThread {
+            try {
+                val activity = reactContext.currentActivity
+                if (activity != null) {
+                    val now = android.os.SystemClock.uptimeMillis()
+                    val downEvent = KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState)
+                    val upEvent = KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, metaState)
+                    activity.dispatchKeyEvent(downEvent)
+                    activity.dispatchKeyEvent(upEvent)
+                    Log.d(TAG, "Dispatched key combo via activity: keyCode=$keyCode, metaState=$metaState")
+                } else {
+                    Log.e(TAG, "Cannot dispatch key combo: no activity and AccessibilityService not running")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to dispatch key combo: ${e.message}")
+            }
+        }
+    }
+
+    // ==================== Keyboard Key Mapping ====================
 
     /**
      * Map a key name (string) to an Android KeyEvent keycode.
@@ -1309,19 +1399,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
         }
 
         val finalMetaState = metaState
-        Thread {
-            try {
-                val inst = Instrumentation()
-                val now = android.os.SystemClock.uptimeMillis()
-                val downEvent = KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, finalMetaState)
-                val upEvent = KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, finalMetaState)
-                inst.sendKeySync(downEvent)
-                inst.sendKeySync(upEvent)
-                Log.d(TAG, "Keyboard combo sent: $map (key=$keyCode, meta=$finalMetaState)")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send keyboard combo: ${e.message}")
-            }
-        }.start()
+        dispatchKeyWithMeta(keyCode, finalMetaState)
 
         return JSONObject().apply {
             put("executed", true)
@@ -1335,19 +1413,41 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Type a text string by sending individual key events for each character.
-     * Uses Instrumentation.sendStringSync() for natural text input.
+     * Type a text string by dispatching key events for each character.
+     * Uses KeyCharacterMap.getEvents() to convert chars to KeyEvent sequences,
+     * then dispatches via activity.dispatchKeyEvent() (no Instrumentation needed).
      */
     private fun sendKeyboardText(text: String): JSONObject {
-        Thread {
+        // Try AccessibilityService first (works cross-app on all ROMs)
+        if (FreeKioskAccessibilityService.isRunning()) {
+            FreeKioskAccessibilityService.sendText(text)
+            return JSONObject().apply {
+                put("executed", true)
+                put("command", "keyboardText")
+                put("textLength", text.length)
+                put("method", "accessibilityService")
+            }
+        }
+        // Fallback to Activity dispatchKeyEvent (works only in FreeKiosk's own Activity)
+        UiThreadUtil.runOnUiThread {
             try {
-                val inst = Instrumentation()
-                inst.sendStringSync(text)
-                Log.d(TAG, "Keyboard text sent: ${text.take(50)}${if (text.length > 50) "..." else ""}")
+                val activity = reactContext.currentActivity
+                if (activity != null) {
+                    val kcm = android.view.KeyCharacterMap.load(android.view.KeyCharacterMap.VIRTUAL_KEYBOARD)
+                    val events = kcm.getEvents(text.toCharArray())
+                    if (events != null) {
+                        for (event in events) {
+                            activity.dispatchKeyEvent(event)
+                        }
+                    }
+                    Log.d(TAG, "Keyboard text sent via activity: ${text.take(50)}${if (text.length > 50) "..." else ""}")
+                } else {
+                    Log.e(TAG, "Cannot send keyboard text: no activity and AccessibilityService not running")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send keyboard text: ${e.message}")
             }
-        }.start()
+        }
 
         return JSONObject().apply {
             put("executed", true)

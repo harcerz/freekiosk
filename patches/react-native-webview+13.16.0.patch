@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
-index 0287e1c..01c6a83 100644
+index 0287e1c..c09506e 100644
 --- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
 +++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
 @@ -1,9 +1,11 @@
@@ -31,12 +31,19 @@ index 0287e1c..01c6a83 100644
  import com.reactnativecommunity.webview.events.SubResourceErrorEvent;
  import com.reactnativecommunity.webview.events.TopHttpErrorEvent;
  import com.reactnativecommunity.webview.events.TopLoadingErrorEvent;
-@@ -35,12 +40,16 @@ import com.reactnativecommunity.webview.events.TopShouldStartLoadWithRequestEven
+@@ -35,14 +40,28 @@ import com.reactnativecommunity.webview.events.TopShouldStartLoadWithRequestEven
  import android.webkit.CookieManager;
  import android.webkit.CookieSyncManager;
  
++import java.io.InputStream;
++import java.net.HttpURLConnection;
++import java.net.URL;
 +import java.security.MessageDigest;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
  import java.util.concurrent.atomic.AtomicReference;
++import javax.net.ssl.HttpsURLConnection;
  
  public class RNCWebViewClient extends WebViewClient {
      private static String TAG = "RNCWebViewClient";
@@ -47,8 +54,131 @@ index 0287e1c..01c6a83 100644
 +
      protected boolean mLastLoadFailed = false;
      protected RNCWebView.ProgressChangedFilter progressChangedFilter = null;
++
++    // FreeKiosk: Track current page URL for PDF proxy (thread-safe)
++    private final AtomicReference<String> mCurrentPageUrl = new AtomicReference<>("");
      protected @Nullable RNCBasicAuthCredential basicAuthCredential = null;
-@@ -157,23 +166,15 @@ public class RNCWebViewClient extends WebViewClient {
+ 
+     public void setBasicAuthCredential(@Nullable RNCBasicAuthCredential credential) {
+@@ -86,10 +105,117 @@ public class RNCWebViewClient extends WebViewClient {
+       super.onPageStarted(webView, url, favicon);
+       mLastLoadFailed = false;
+ 
++      // FreeKiosk: Track current URL for PDF proxy
++      mCurrentPageUrl.set(url != null ? url : "");
++
+       RNCWebView reactWebView = (RNCWebView) webView;
+       reactWebView.callInjectedJavaScriptBeforeContentLoaded();
+     }
+ 
++    /**
++     * FreeKiosk PDF Proxy: When the PDF.js viewer (loaded from file:///android_asset/pdfjs/)
++     * makes XHR/fetch requests to download a remote PDF, we intercept them here and
++     * proxy via native HttpURLConnection. This bypasses CORS restrictions that would
++     * otherwise block file:// -> https:// requests on many servers.
++     */
++    @Override
++    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
++        String pageUrl = mCurrentPageUrl.get();
++        if (pageUrl != null && pageUrl.startsWith("file:///android_asset/pdfjs/")) {
++            String requestUrl = request.getUrl().toString();
++            if (requestUrl.startsWith("https://") || requestUrl.startsWith("http://")) {
++                try {
++                    URL url = new URL(requestUrl);
++                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
++                    conn.setRequestMethod(request.getMethod());
++                    conn.setInstanceFollowRedirects(true);
++                    conn.setConnectTimeout(15000);
++                    conn.setReadTimeout(30000);
++
++                    // Forward request headers (Range, Accept, User-Agent, etc.)
++                    Map<String, String> reqHeaders = request.getRequestHeaders();
++                    if (reqHeaders != null) {
++                        for (Map.Entry<String, String> entry : reqHeaders.entrySet()) {
++                            conn.setRequestProperty(entry.getKey(), entry.getValue());
++                        }
++                    }
++
++                    // Forward cookies for the target domain
++                    String cookie = CookieManager.getInstance().getCookie(requestUrl);
++                    if (cookie != null && !cookie.isEmpty()) {
++                        conn.setRequestProperty("Cookie", cookie);
++                    }
++
++                    conn.connect();
++
++                    int statusCode = conn.getResponseCode();
++                    String statusMessage = conn.getResponseMessage();
++                    if (statusMessage == null) statusMessage = "OK";
++
++                    // Determine MIME type
++                    String contentType = conn.getContentType();
++                    String mimeType = "application/octet-stream";
++                    String encoding = null;
++                    if (contentType != null) {
++                        String[] parts = contentType.split(";");
++                        mimeType = parts[0].trim();
++                        for (String part : parts) {
++                            String trimmed = part.trim();
++                            if (trimmed.startsWith("charset=")) {
++                                encoding = trimmed.substring(8).trim();
++                            }
++                        }
++                    }
++
++                    // Build response headers, inject CORS allow-all
++                    Map<String, String> responseHeaders = new HashMap<>();
++                    responseHeaders.put("Access-Control-Allow-Origin", "*");
++                    responseHeaders.put("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
++                    responseHeaders.put("Access-Control-Allow-Headers", "Range");
++                    responseHeaders.put("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges");
++                    Map<String, List<String>> headerFields = conn.getHeaderFields();
++                    if (headerFields != null) {
++                        for (Map.Entry<String, List<String>> entry : headerFields.entrySet()) {
++                            String key = entry.getKey();
++                            if (key != null && !key.isEmpty() && entry.getValue() != null && !entry.getValue().isEmpty()) {
++                                // Don't override our CORS headers
++                                String keyLower = key.toLowerCase();
++                                if (!keyLower.startsWith("access-control-")) {
++                                    responseHeaders.put(key, entry.getValue().get(0));
++                                }
++                            }
++                        }
++                    }
++
++                    InputStream inputStream;
++                    if (statusCode >= 400) {
++                        inputStream = conn.getErrorStream();
++                        if (inputStream == null) inputStream = conn.getInputStream();
++                    } else {
++                        inputStream = conn.getInputStream();
++                    }
++
++                    if (BuildConfig.DEBUG) {
++                        Log.i(TAG, "[FreeKiosk] PDF proxy: " + statusCode + " " + mimeType + " " + requestUrl);
++                    }
++
++                    return new WebResourceResponse(
++                        mimeType,
++                        encoding,
++                        statusCode,
++                        statusMessage,
++                        responseHeaders,
++                        inputStream
++                    );
++                } catch (Exception e) {
++                    Log.e(TAG, "[FreeKiosk] PDF proxy error for " + requestUrl + ": " + e.getMessage());
++                    // Fall through to default behavior
++                }
++            }
++        }
++        return super.shouldInterceptRequest(view, request);
++    }
++
+     @Override
+     public boolean shouldOverrideUrlLoading(WebView view, String url) {
+         final RNCWebView rncWebView = (RNCWebView) view;
+@@ -157,23 +283,15 @@ public class RNCWebViewClient extends WebViewClient {
  
      @Override
      public void onReceivedSslError(final WebView webView, final SslErrorHandler handler, final SslError error) {
@@ -74,7 +204,7 @@ index 0287e1c..01c6a83 100644
          switch (code) {
              case SslError.SSL_DATE_INVALID:
                  description = "The date of the certificate is invalid";
-@@ -200,26 +201,228 @@ public class RNCWebViewClient extends WebViewClient {
+@@ -200,26 +318,228 @@ public class RNCWebViewClient extends WebViewClient {
  
          description = descriptionPrefix + description;
  
@@ -315,7 +445,7 @@ index 0287e1c..01c6a83 100644
      public void onReceivedSubResourceSslError(
        WebView webView,
        int errorCode,
-@@ -314,8 +517,6 @@ public class RNCWebViewClient extends WebViewClient {
+@@ -314,8 +634,6 @@ public class RNCWebViewClient extends WebViewClient {
      protected WritableMap createWebViewEvent(WebView webView, String url) {
          WritableMap event = Arguments.createMap();
          event.putDouble("target", RNCWebViewWrapper.getReactTagFromWebView(webView));
@@ -324,3 +454,61 @@ index 0287e1c..01c6a83 100644
          event.putString("url", url);
          event.putBoolean("loading", !mLastLoadFailed && webView.getProgress() != 100);
          event.putString("title", webView.getTitle());
+diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+index f83033b..98721f1 100644
+--- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
++++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+@@ -92,14 +92,42 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+             WebView.setWebContentsDebuggingEnabled(true)
+         }
+         webView.setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->
++            // FreeKiosk: Check if this is an explicit download request (from PDF viewer download button)
++            // The __fk_dl=1 marker means "user wants to download, don't redirect to viewer"
++            var cleanUrl = url
++            val isExplicitDownload = url.contains("__fk_dl=1")
++            if (isExplicitDownload) {
++                // Strip the marker from URL before downloading
++                cleanUrl = url.replace("&__fk_dl=1", "").replace("?__fk_dl=1&", "?").replace("?__fk_dl=1", "")
++                Log.i(TAG, "[FreeKiosk] Explicit PDF download requested: $cleanUrl")
++            }
++
++            // FreeKiosk PDF Viewer: intercept PDF downloads and open in local PDF.js viewer
++            // We use allowFileAccess as the signal that PDF viewer is enabled
++            // (it's only set to true when pdfViewerEnabled prop is true)
++            // Skip interception if user explicitly requested download
++            if (!isExplicitDownload) {
++                val isPdf = mimetype?.lowercase()?.contains("pdf") == true ||
++                            cleanUrl.lowercase().split("?")[0].split("#")[0].endsWith(".pdf")
++                if (isPdf && webView.settings.allowFileAccess) {
++                    Log.i(TAG, "[FreeKiosk] PDF download intercepted, redirecting to PDF.js viewer: $cleanUrl")
++                    val encodedUrl = java.net.URLEncoder.encode(cleanUrl, "UTF-8")
++                    val viewerUrl = "file:///android_asset/pdfjs/viewer.html?file=$encodedUrl"
++                    webView.post {
++                        webView.loadUrl(viewerUrl)
++                    }
++                    return@DownloadListener
++                }
++            }
++
+             val module = webView.reactApplicationContext.getNativeModule(RNCWebViewModule::class.java) ?: return@DownloadListener
+             val request: DownloadManager.Request = try {
+-                DownloadManager.Request(Uri.parse(url))
++                DownloadManager.Request(Uri.parse(cleanUrl))
+             } catch (e: IllegalArgumentException) {
+                 Log.w(TAG, "Unsupported URI, aborting download", e)
+                 return@DownloadListener
+             }
+-            var fileName = URLUtil.guessFileName(url, contentDisposition, mimetype)
++            var fileName = URLUtil.guessFileName(cleanUrl, contentDisposition, mimetype)
+ 
+             // Sanitize filename by replacing invalid characters with "_"
+             fileName = fileName.replace(invalidCharRegex, "_")
+@@ -109,7 +137,7 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+             //Attempt to add cookie, if it exists
+             var urlObj: URL? = null
+             try {
+-                urlObj = URL(url)
++                urlObj = URL(cleanUrl)
+                 val baseUrl = urlObj.protocol + "://" + urlObj.host
+                 val cookie = CookieManager.getInstance().getCookie(baseUrl)
+                 request.addRequestHeader("Cookie", cookie)

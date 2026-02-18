@@ -15,6 +15,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ***
 
+## [1.2.12] - 2026-02-18
+
+### Added
+- 🔒 **Screen lock without Device Owner**: `screen/off` and `lock` now work with Device Admin or AccessibilityService
+  - 4-tier fallback: Device Owner `lockNow()` → **Device Admin `lockNow()`** → AccessibilityService `GLOBAL_ACTION_LOCK_SCREEN` (API 28+) → dim brightness to 0
+  - `dpm.lockNow()` is available to Device Admin apps (API 8+), not just Device Owner — was an oversight
+  - Enables full FreeKiosk screen control when another MDM already holds Device Owner
+  - Truly turns off the screen (hardware off) with any of the 3 first tiers
+  - Wake-up cycle (`screen/on`, AlarmManager, WakeLock) unchanged and fully compatible
+  - `/api/lock` and `screen/off` response now includes `"method"` field (`"DeviceOwner"`, `"DeviceAdmin"`, or `"AccessibilityService"`)
+
+- **Inline PDF Viewer**: PDFs now open directly in-app via a bundled PDF.js viewer instead of being downloaded
+  - Enabled via a toggle in **Settings → General → PDF Viewer**
+  - Uses **PDF.js v3.11.174** bundled locally in Android assets — no Google Docs, no external service
+  - Full viewer UI: page navigation (◀/▶), zoom (−/⊡/+), close (✕), and download (⬇) buttons
+  - **Download button** triggers the native Android `DownloadManager` (notification + Downloads folder)
+  - Intercepts PDF links at 3 levels:
+    1. **JS injection**: strips `<a download>` attributes so Android's DownloadListener doesn't fire early
+    2. **`onShouldStartLoadWithRequest`**: redirects `.pdf` URLs and Google redirect URLs (`google.com/url?url=...`) to the viewer
+    3. **Native `DownloadListener` patch** (`RNCWebViewManagerImpl.kt`): intercepts PDFs detected by `Content-Type: application/pdf` or `Content-Disposition: attachment` and loads the viewer instead of downloading
+  - **Native HTTP proxy** (`RNCWebViewClient.java` `shouldInterceptRequest`): when the viewer is active, proxies all remote PDF XHR requests via `HttpURLConnection` to bypass CORS restrictions — cookies and `Range` headers forwarded
+  - Security: `allowFileAccess` / `allowUniversalAccessFromFileURLs` only enabled when PDF viewer is on
+  - All patches saved in `patches/react-native-webview+13.16.0.patch` via `patch-package`
+
+- ♿ **AccessibilityService for cross-app key injection**: New `FreeKioskAccessibilityService` enables keyboard emulation in External App mode
+  - Uses `performGlobalAction()` for Back/Home/Recents navigation (all Android versions)
+  - Uses `InputMethod.sendKeyEvent()` / `commitText()` for keys and text on Android 13+ (API 33+)
+  - Fallback for Android 5–12: `ACTION_SET_TEXT` injects printable characters, text, Backspace, and Shift+letter
+  - `KeyCharacterMap` converts keyCodes to printable characters for the ACTION_SET_TEXT fallback
+  - Automatic fallback chain: AccessibilityService → Activity `dispatchKeyEvent()` → `input keyevent` (last resort)
+  - **Settings UI**: New "Accessibility Service" section in Advanced Settings with:
+    - Status indicator (Active / Enabled / Disabled)
+    - "Open Accessibility Settings" button to launch Android's settings
+    - "Enable Automatically" button for Device Owner mode (no user interaction needed)
+    - Info box explaining why the service is needed
+  - Compatible with privacy ROMs (e/OS, LineageOS, CalyxOS, GrapheneOS) where `Instrumentation` is blocked
+
+### Fixed
+- 🔑 **Key injection compatibility fix**: Replaced `Instrumentation.sendKeyDownUpSync()` with `activity.dispatchKeyEvent()` across all remote/keyboard endpoints
+  - `Instrumentation` requires `INJECT_EVENTS` (signature-level permission) which privacy-focused ROMs (e/OS, LineageOS, CalyxOS, GrapheneOS) block
+  - `dispatchKeyEvent()` dispatches directly into the Activity's View hierarchy — no special permission needed
+  - Affects: `/api/remote/*` (all 9 keys), `/api/remote/keyboard/{key}`, `/api/remote/keyboard?map=...`, `/api/remote/text`
+  - Also fixed in `KioskModule.sendRemoteKey()` (used by JS-side remote control)
+  - No regression on standard ROMs (Samsung, Pixel, AOSP)
+
+
+***
+
 ## [1.2.11] - 2026-02-16
 
 ### Added

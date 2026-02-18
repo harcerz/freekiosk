@@ -11,7 +11,7 @@
   </p>
   
   <p>
-    <img src="https://img.shields.io/badge/Version-1.2.11-blue.svg" alt="Version 1.2.9">
+    <img src="https://img.shields.io/badge/Version-1.2.12-blue.svg" alt="Version 1.2.9">
     <a href="https://github.com/rushb-fr/freekiosk/releases"><img src="https://img.shields.io/github/downloads/rushb-fr/freekiosk/total.svg" alt="Downloads"></a>
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
     <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
@@ -261,7 +261,13 @@ Done! Your tablet is now in kiosk mode.
 
 ## 🗺️ Roadmap
 
-### ✅ v1.2.11 (Feb 2026) - Keyboard API, GPS, TTS & Major Fixes 🆕
+### ✅ v1.2.12 (Feb 2026) - PDF Viewer, Accessibility & Screen Lock 🆕
+- 📄 **Inline PDF Viewer**: PDFs open directly in-app via bundled PDF.js — no Google Docs needed
+- ♿ **AccessibilityService**: Cross-app keyboard injection for External App mode (privacy ROM compatible)
+- 🔒 **Screen Lock without Device Owner**: 4-tier fallback (Device Owner → Device Admin → Accessibility → dim)
+- 🔑 **Key Injection Fix**: Replaced `Instrumentation` with `dispatchKeyEvent()` for privacy ROM compatibility
+
+### ✅ v1.2.11 (Feb 2026) - Keyboard API, GPS, TTS & Major Fixes
 - ⌨️ **Keyboard Emulation API**: Full keyboard input, shortcuts & text typing via REST
 - 📍 **GPS Location API**: Device coordinates via `/api/location`
 - 🔋 **Enriched Battery API**: Temperature, voltage, health & technology fields

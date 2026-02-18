@@ -56,6 +56,10 @@ interface GeneralTabProps {
   autoReload: boolean;
   onAutoReloadChange: (value: boolean) => void;
   
+  // PDF Viewer (webview only)
+  pdfViewerEnabled: boolean;
+  onPdfViewerEnabledChange: (value: boolean) => void;
+  
   // URL Rotation (webview only)
   urlRotationEnabled: boolean;
   onUrlRotationEnabledChange: (value: boolean) => void;
@@ -123,6 +127,8 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
   onPinModeChange,
   autoReload,
   onAutoReloadChange,
+  pdfViewerEnabled,
+  onPdfViewerEnabledChange,
   urlRotationEnabled,
   onUrlRotationEnabledChange,
   urlRotationList,
@@ -501,6 +507,27 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
             value={autoReload}
             onValueChange={onAutoReloadChange}
           />
+        </SettingsSection>
+      )}
+      
+      {/* PDF Viewer - WebView only */}
+      {displayMode === 'webview' && (
+        <SettingsSection title="PDF Viewer" icon="file-pdf-box">
+          <SettingsSwitch
+            label="Inline PDF Viewer"
+            hint="Display PDF files directly in the browser instead of downloading them"
+            value={pdfViewerEnabled}
+            onValueChange={onPdfViewerEnabledChange}
+          />
+          
+          {pdfViewerEnabled && (
+            <SettingsInfoBox variant="info">
+              <Text style={styles.infoText}>
+                {'📄 PDF links will open in a built-in viewer with page navigation and zoom controls.\n\n'}
+                {'⚠️ Enabling this feature allows file access in the WebView for the local PDF renderer. Only enable if your kiosk website links to PDF files.'}
+              </Text>
+            </SettingsInfoBox>
+          )}
         </SettingsSection>
       )}
       

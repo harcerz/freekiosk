@@ -91,6 +91,8 @@ const KEYS = {
   URL_FILTER_MODE: '@kiosk_url_filter_mode', // 'blacklist' | 'whitelist'
   URL_FILTER_LIST: '@kiosk_url_filter_list',
   URL_FILTER_SHOW_FEEDBACK: '@kiosk_url_filter_show_feedback',
+  // PDF Viewer
+  PDF_VIEWER_ENABLED: '@kiosk_pdf_viewer_enabled',
   // Legacy keys for backward compatibility
   SCREENSAVER_DELAY: '@screensaver_delay',
   MOTION_DETECTION_ENABLED: '@motion_detection_enabled',
@@ -1622,6 +1624,26 @@ export const StorageService = {
       return value ? JSON.parse(value) : false;
     } catch (error) {
       console.error('Error getting URL filter show feedback:', error);
+      return false;
+    }
+  },
+
+  // ============ PDF VIEWER ============
+
+  savePdfViewerEnabled: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.PDF_VIEWER_ENABLED, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving PDF viewer enabled:', error);
+    }
+  },
+
+  getPdfViewerEnabled: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.PDF_VIEWER_ENABLED);
+      return value ? JSON.parse(value) : false;
+    } catch (error) {
+      console.error('Error getting PDF viewer enabled:', error);
       return false;
     }
   },
