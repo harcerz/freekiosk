@@ -17,6 +17,7 @@ export interface MqttConfig {
   discoveryPrefix: string;
   statusInterval: number;
   allowControl: boolean;
+  deviceName?: string;
 }
 
 class MqttClientService {

@@ -39,6 +39,7 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
   const [discoveryPrefix, setDiscoveryPrefix] = useState('homeassistant');
   const [statusInterval, setStatusInterval] = useState('30');
   const [allowControl, setAllowControl] = useState(true);
+  const [deviceName, setDeviceName] = useState('');
   const [motionAlwaysOn, setMotionAlwaysOn] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -64,6 +65,7 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
   useEffect(() => {
     const unsubscribe = mqttClient.onConnectionChanged((connected) => {
       setIsConnected(connected);
+      setIsLoading(false);
     });
 
     return unsubscribe;
@@ -80,6 +82,7 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
       prefix,
       interval,
       control,
+      mqttDeviceName,
       mqttPassword,
       mqttMotionAlwaysOn,
     ] = await Promise.all([
@@ -92,6 +95,7 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
       StorageService.getMqttDiscoveryPrefix(),
       StorageService.getMqttStatusInterval(),
       StorageService.getMqttAllowControl(),
+      StorageService.getMqttDeviceName(),
       getSecureMqttPassword(),
       StorageService.getMqttMotionAlwaysOn(),
     ]);
@@ -105,18 +109,31 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
     setDiscoveryPrefix(prefix);
     setStatusInterval(interval.toString());
     setAllowControl(control);
+    setDeviceName(mqttDeviceName);
     setPassword(mqttPassword);
     setMotionAlwaysOn(mqttMotionAlwaysOn);
   };
 
-  const restartIfConnected = async () => {
-    if (isConnected || mqttEnabled) {
-      try {
-        await mqttClient.stop();
-        await ApiService.autoStartMqtt();
-      } catch (error: any) {
-        console.error('[MqttSettings] Error restarting MQTT:', error);
-      }
+  const handleConnect = async () => {
+    setIsLoading(true);
+    try {
+      await ApiService.autoStartMqtt();
+    } catch (error: any) {
+      console.error('[MqttSettings] Failed to connect MQTT:', error);
+      Alert.alert('Error', `Failed to connect MQTT: ${error.message}`);
+      setIsLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setIsLoading(true);
+    try {
+      await ApiService.stopMqtt();
+      setIsConnected(false);
+    } catch (error: any) {
+      console.error('[MqttSettings] Failed to disconnect MQTT:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -124,17 +141,7 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
     setMqttEnabled(enabled);
     await StorageService.saveMqttEnabled(enabled);
 
-    if (enabled) {
-      setIsLoading(true);
-      try {
-        await ApiService.autoStartMqtt();
-      } catch (error: any) {
-        console.error('[MqttSettings] Failed to start MQTT:', error);
-        Alert.alert('Error', `Failed to start MQTT: ${error.message}`);
-      } finally {
-        setIsLoading(false);
-      }
-    } else {
+    if (!enabled && isConnected) {
       setIsLoading(true);
       try {
         await ApiService.stopMqtt();
@@ -152,7 +159,6 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
   const handleBrokerUrlChange = async (value: string) => {
     setBrokerUrl(value);
     await StorageService.saveMqttBrokerUrl(value);
-    await restartIfConnected();
     onSettingsChanged?.();
   };
 
@@ -161,7 +167,6 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
     const portNum = parseInt(value, 10);
     if (!isNaN(portNum) && portNum >= 1 && portNum <= 65535) {
       await StorageService.saveMqttPort(portNum);
-      await restartIfConnected();
       onSettingsChanged?.();
     }
   };
@@ -169,35 +174,30 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
   const handleUsernameChange = async (value: string) => {
     setUsername(value);
     await StorageService.saveMqttUsername(value);
-    await restartIfConnected();
     onSettingsChanged?.();
   };
 
   const handlePasswordChange = async (value: string) => {
     setPassword(value);
     await saveSecureMqttPassword(value);
-    await restartIfConnected();
     onSettingsChanged?.();
   };
 
   const handleClientIdChange = async (value: string) => {
     setClientId(value);
     await StorageService.saveMqttClientId(value);
-    await restartIfConnected();
     onSettingsChanged?.();
   };
 
   const handleBaseTopicChange = async (value: string) => {
     setBaseTopic(value);
     await StorageService.saveMqttBaseTopic(value);
-    await restartIfConnected();
     onSettingsChanged?.();
   };
 
   const handleDiscoveryPrefixChange = async (value: string) => {
     setDiscoveryPrefix(value);
     await StorageService.saveMqttDiscoveryPrefix(value);
-    await restartIfConnected();
     onSettingsChanged?.();
   };
 
@@ -206,7 +206,6 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
     const seconds = parseInt(value, 10);
     if (!isNaN(seconds) && seconds >= 5 && seconds <= 3600) {
       await StorageService.saveMqttStatusInterval(seconds);
-      await restartIfConnected();
       onSettingsChanged?.();
     }
   };
@@ -214,7 +213,12 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
   const handleAllowControlChange = async (value: boolean) => {
     setAllowControl(value);
     await StorageService.saveMqttAllowControl(value);
-    await restartIfConnected();
+    onSettingsChanged?.();
+  };
+
+  const handleDeviceNameChange = async (value: string) => {
+    setDeviceName(value);
+    await StorageService.saveMqttDeviceName(value);
     onSettingsChanged?.();
   };
 
@@ -248,7 +252,7 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
 
       {mqttEnabled && (
         <>
-          {/* Connection Status */}
+          {/* Connection Status + Connect/Disconnect Button */}
           <View style={styles.statusContainer}>
             <View style={styles.statusRow}>
               <View style={[
@@ -260,6 +264,31 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
               </Text>
               {isLoading && <ActivityIndicator size="small" color="#007AFF" style={styles.loader} />}
             </View>
+
+            {/* Connect / Disconnect button */}
+            {!isLoading && (
+              <View style={styles.connectButtonRow}>
+                {isConnected ? (
+                  <TouchableOpacity
+                    style={[styles.connectButton, styles.disconnectButton]}
+                    onPress={handleDisconnect}
+                  >
+                    <Icon name="lan-disconnect" size={16} color="#FFF" />
+                    <Text style={styles.connectButtonText}>Disconnect</Text>
+                  </TouchableOpacity>
+                ) : brokerUrl.trim().length > 0 ? (
+                  <TouchableOpacity
+                    style={styles.connectButton}
+                    onPress={handleConnect}
+                  >
+                    <Icon name="lan-connect" size={16} color="#FFF" />
+                    <Text style={styles.connectButtonText}>Connect</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.connectHint}>Enter broker URL to connect</Text>
+                )}
+              </View>
+            )}
           </View>
 
           {/* Broker URL */}
@@ -309,6 +338,16 @@ export const MqttSettingsSection: React.FC<MqttSettingsSectionProps> = ({
             onChangeText={handleClientIdChange}
             placeholder="Auto-generated if empty"
             icon="identifier"
+          />
+
+          {/* Device Name */}
+          <SettingsInput
+            label="Device Name (optional)"
+            value={deviceName}
+            onChangeText={handleDeviceNameChange}
+            placeholder="e.g. lobby, entrance, kitchen"
+            icon="rename-box"
+            hint="Friendly name used in MQTT topics and HA device name. If empty, uses Android ID."
           />
 
           {/* Base Topic */}
@@ -397,6 +436,32 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginLeft: 8,
+  },
+  connectButtonRow: {
+    marginTop: 10,
+  },
+  connectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4CAF50',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  disconnectButton: {
+    backgroundColor: '#F44336',
+  },
+  connectButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  connectHint: {
+    fontSize: 13,
+    color: '#999',
+    fontStyle: 'italic',
   },
   hintContainer: {
     flexDirection: 'row',

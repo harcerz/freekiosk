@@ -453,18 +453,27 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
           try {
             await AutoBrightnessModule.stopAutoBrightness();
             setAutoBrightnessEnabled(false);
-            
+
             // Restore saved manual brightness
             const savedBrightness = await StorageService.getAutoBrightnessSavedManual();
             if (savedBrightness !== null) {
               await RNBrightness.setBrightnessLevel(savedBrightness);
               setDefaultBrightness(savedBrightness);
             }
-            
+
             await StorageService.saveAutoBrightnessEnabled(false);
             console.log('[API] Auto-brightness disabled');
           } catch (error) {
             console.error('[API] Error disabling auto-brightness:', error);
+          }
+        },
+        onSetMotionAlwaysOn: async (value: boolean) => {
+          try {
+            setMotionAlwaysOn(value);
+            await StorageService.saveMqttMotionAlwaysOn(value);
+            console.log('[API] Motion always-on set to', value);
+          } catch (error) {
+            console.error('[API] Error setting motion always-on:', error);
           }
         },
       });
@@ -574,8 +583,9 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       autoBrightnessEnabled: autoBrightnessEnabled,
       autoBrightnessMin: autoBrightnessMin,
       autoBrightnessMax: autoBrightnessMax,
+      motionAlwaysOn: motionAlwaysOn,
     });
-  }, [url, defaultBrightness, isScreensaverActive, urlRotationEnabled, urlRotationList, urlRotationInterval, currentUrlIndex, autoBrightnessEnabled, autoBrightnessMin, autoBrightnessMax]);
+  }, [url, defaultBrightness, isScreensaverActive, urlRotationEnabled, urlRotationList, urlRotationInterval, currentUrlIndex, autoBrightnessEnabled, autoBrightnessMin, autoBrightnessMax, motionAlwaysOn]);
 
   // Countdown timer effect (transparent - no UI)
   useEffect(() => {

@@ -26,6 +26,9 @@ import android.content.IntentFilter
 import android.os.Build
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.Manifest
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : ReactActivity() {
 
@@ -83,6 +86,12 @@ class MainActivity : ReactActivity() {
     if (handleAdbConfig(intent)) {
       return  // Exit - app restarting with new config
     }
+
+    // Request location permission for WiFi SSID access (Android 8+ requires it)
+    requestLocationPermission()
+
+    // Request camera permission for motion detection
+    requestCameraPermission()
 
     readExternalAppConfig()
     ensureBootReceiverEnabled()
@@ -147,6 +156,20 @@ class MainActivity : ReactActivity() {
       android.util.Log.d("MainActivity", "Sent onAppReturned event (voluntary=$voluntary)")
     } catch (e: Exception) {
       android.util.Log.e("MainActivity", "Failed to send onAppReturned event: ${e.message}")
+    }
+  }
+
+  private fun requestLocationPermission() {
+    if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        != PackageManager.PERMISSION_GRANTED) {
+      ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1001)
+    }
+  }
+
+  private fun requestCameraPermission() {
+    if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+        != PackageManager.PERMISSION_GRANTED) {
+      ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 1002)
     }
   }
 

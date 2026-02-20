@@ -33,6 +33,7 @@ export interface ApiCallbacks {
   onRemoteKey?: (key: string) => void;
   onAutoBrightnessEnable?: (min: number, max: number) => void;
   onAutoBrightnessDisable?: () => void;
+  onSetMotionAlwaysOn?: (value: boolean) => void;
 }
 
 export interface AppStatus {
@@ -53,6 +54,7 @@ export interface AppStatus {
   autoBrightnessMax?: number;
   scheduledSleep?: boolean;
   motionDetected?: boolean;
+  motionAlwaysOn?: boolean;
 }
 
 class ApiServiceClass {
@@ -145,6 +147,7 @@ class ApiServiceClass {
       const discoveryPrefix = await StorageService.getMqttDiscoveryPrefix();
       const statusInterval = await StorageService.getMqttStatusInterval();
       const allowControl = await StorageService.getMqttAllowControl();
+      const deviceName = await StorageService.getMqttDeviceName();
 
       await mqttClient.start({
         brokerUrl,
@@ -156,6 +159,7 @@ class ApiServiceClass {
         discoveryPrefix,
         statusInterval: statusInterval * 1000, // Convert seconds to ms
         allowControl,
+        deviceName: deviceName || undefined,
       });
 
       console.log(`ApiService: MQTT client started for ${brokerUrl}:${port}`);
@@ -307,7 +311,13 @@ class ApiServiceClass {
             this.callbacks.onAutoBrightnessDisable();
           }
           break;
-          
+
+        case 'setMotionAlwaysOn':
+          if (this.callbacks.onSetMotionAlwaysOn) {
+            this.callbacks.onSetMotionAlwaysOn(params.value === true);
+          }
+          break;
+
         default:
           console.warn('ApiService: Unknown command', event.command);
       }

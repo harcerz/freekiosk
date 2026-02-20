@@ -103,6 +103,7 @@ const KEYS = {
   MQTT_DISCOVERY_PREFIX: '@kiosk_mqtt_discovery_prefix',
   MQTT_STATUS_INTERVAL: '@kiosk_mqtt_status_interval',
   MQTT_ALLOW_CONTROL: '@kiosk_mqtt_allow_control',
+  MQTT_DEVICE_NAME: '@kiosk_mqtt_device_name',
   MQTT_MOTION_ALWAYS_ON: '@kiosk_mqtt_motion_always_on',
   // Legacy keys for backward compatibility
   SCREENSAVER_DELAY: '@screensaver_delay',
@@ -309,6 +310,7 @@ export const StorageService = {
         KEYS.MQTT_DISCOVERY_PREFIX,
         KEYS.MQTT_STATUS_INTERVAL,
         KEYS.MQTT_ALLOW_CONTROL,
+        KEYS.MQTT_DEVICE_NAME,
         KEYS.MQTT_MOTION_ALWAYS_ON,
         // Legacy keys
         KEYS.SCREENSAVER_DELAY,
@@ -1834,6 +1836,24 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting MQTT allow control:', error);
       return true;
+    }
+  },
+
+  saveMqttDeviceName: async (name: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.MQTT_DEVICE_NAME, name);
+    } catch (error) {
+      console.error('Error saving MQTT device name:', error);
+    }
+  },
+
+  getMqttDeviceName: async (): Promise<string> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.MQTT_DEVICE_NAME);
+      return value || '';
+    } catch (error) {
+      console.error('Error getting MQTT device name:', error);
+      return '';
     }
   },
 

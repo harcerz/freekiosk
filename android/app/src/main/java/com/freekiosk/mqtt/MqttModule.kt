@@ -12,10 +12,14 @@ import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.os.StatFs
 import android.provider.Settings
+import android.speech.tts.TextToSpeech
 import android.util.Log
+import android.widget.Toast
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import org.json.JSONObject
@@ -66,6 +70,51 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
 
     // Motion detection
     private var jsMotionDetected: Boolean = false
+    private var jsMotionAlwaysOn: Boolean = false
+
+    // ==================== TTS ====================
+
+    private var tts: TextToSpeech? = null
+    private var ttsReady: Boolean = false
+
+    init {
+        try {
+            tts = TextToSpeech(reactContext.applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    ttsReady = true
+                    Log.d(TAG, "TextToSpeech initialized successfully")
+                } else {
+                    Log.e(TAG, "TextToSpeech initialization failed: $status")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize TTS: ${e.message}")
+        }
+    }
+
+    private fun speakText(text: String) {
+        try {
+            if (tts != null && ttsReady) {
+                tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "mqtt_tts_${System.currentTimeMillis()}")
+                Log.d(TAG, "TTS speaking: $text")
+            } else {
+                Log.w(TAG, "TTS not ready")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "TTS speak failed: ${e.message}")
+        }
+    }
+
+    private fun showToastMessage(text: String) {
+        try {
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(reactContext.applicationContext, text, Toast.LENGTH_LONG).show()
+            }
+            Log.d(TAG, "Toast shown: $text")
+        } catch (e: Exception) {
+            Log.e(TAG, "Toast failed: ${e.message}")
+        }
+    }
 
     // ==================== Sensor data ====================
 
@@ -157,7 +206,8 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
                 baseTopic = if (configMap.hasKey("baseTopic")) configMap.getString("baseTopic") ?: "freekiosk" else "freekiosk",
                 discoveryPrefix = if (configMap.hasKey("discoveryPrefix")) configMap.getString("discoveryPrefix") ?: "homeassistant" else "homeassistant",
                 statusInterval = if (configMap.hasKey("statusInterval")) configMap.getInt("statusInterval").toLong() else 30000L,
-                allowControl = if (configMap.hasKey("allowControl")) configMap.getBoolean("allowControl") else true
+                allowControl = if (configMap.hasKey("allowControl")) configMap.getBoolean("allowControl") else true,
+                deviceName = if (configMap.hasKey("deviceName")) configMap.getString("deviceName") else null
             )
 
             val client = KioskMqttClient(reactContext.applicationContext, config)
@@ -166,6 +216,17 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
             client.statusProvider = { getDeviceStatus() }
 
             client.commandHandler = { command, params ->
+                // Handle TTS and Toast natively (JS callback doesn't execute them)
+                when (command) {
+                    "tts" -> {
+                        val text = params?.optString("text", "") ?: ""
+                        if (text.isNotEmpty()) speakText(text)
+                    }
+                    "toast" -> {
+                        val text = params?.optString("text", "") ?: ""
+                        if (text.isNotEmpty()) showToastMessage(text)
+                    }
+                }
                 emitCommand(command, params)
             }
 
@@ -173,14 +234,19 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
                 emitConnectionChanged(connected)
             }
 
+            client.ipProvider = { getLocalIpAddress() }
+
             // Set up Home Assistant discovery
             val deviceId = client.deviceId
+            val topicId = client.topicId
             val appVersion = com.freekiosk.BuildConfig.VERSION_NAME
             val discovery = MqttDiscovery(
                 deviceId = deviceId,
+                topicId = topicId,
                 baseTopic = config.baseTopic,
                 discoveryPrefix = config.discoveryPrefix,
-                appVersion = appVersion
+                appVersion = appVersion,
+                deviceName = config.deviceName
             )
             client.discovery = discovery
 
@@ -257,6 +323,7 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
 
             // Motion detection
             if (status.has("motionDetected")) jsMotionDetected = status.getBoolean("motionDetected")
+            if (status.has("motionAlwaysOn")) jsMotionAlwaysOn = status.getBoolean("motionAlwaysOn")
 
             Log.d(TAG, "Status updated: url=$jsCurrentUrl, screensaver=$jsScreensaverActive, rotation=$jsRotationEnabled, motion=$jsMotionDetected")
 
@@ -346,6 +413,7 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
             val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
             put("isDeviceOwner", dpm.isDeviceOwnerApp(reactContext.packageName))
             put("kioskMode", jsKioskMode)
+            put("motionAlwaysOn", jsMotionAlwaysOn)
         }
         status.put("device", deviceStatus)
 
@@ -589,6 +657,10 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
             mqttClient?.disconnect()
             mqttClient = null
             sensorManager?.unregisterListener(this)
+            tts?.stop()
+            tts?.shutdown()
+            tts = null
+            ttsReady = false
             Log.d(TAG, "MqttModule cleaned up")
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup: ${e.message}")

@@ -6,22 +6,25 @@ import org.json.JSONObject
 
 class MqttDiscovery(
     private val deviceId: String,
+    private val topicId: String,
     private val baseTopic: String,
     private val discoveryPrefix: String,
-    private val appVersion: String
+    private val appVersion: String,
+    private val deviceName: String?
 ) {
 
-    private val stateTopic = "$baseTopic/$deviceId/state"
-    private val availabilityTopic = "$baseTopic/$deviceId/availability"
+    private val stateTopic = "$baseTopic/$topicId/state"
+    private val availabilityTopic = "$baseTopic/$topicId/availability"
 
-    private fun buildDeviceBlock(): JSONObject {
+    private fun buildDeviceBlock(localIp: String): JSONObject {
+        val displayName = deviceName?.takeIf { it.isNotBlank() } ?: "FreeKiosk $topicId"
         return JSONObject().apply {
             put("identifiers", JSONArray().put("freekiosk_$deviceId"))
-            put("name", "FreeKiosk $deviceId")
+            put("name", displayName)
             put("model", "FreeKiosk")
             put("manufacturer", "FreeKiosk")
             put("sw_version", appVersion)
-            put("configuration_url", "http://$deviceId:8080")
+            put("configuration_url", "http://$localIp:8080")
         }
     }
 
@@ -29,26 +32,26 @@ class MqttDiscovery(
         return "$discoveryPrefix/$component/freekiosk_$deviceId/$objectId/config"
     }
 
-    private fun baseConfig(objectId: String, name: String): JSONObject {
+    private fun baseConfig(objectId: String, name: String, localIp: String): JSONObject {
         return JSONObject().apply {
             put("unique_id", "freekiosk_${deviceId}_$objectId")
             put("object_id", "freekiosk_${deviceId}_$objectId")
             put("name", name)
             put("state_topic", stateTopic)
             put("availability_topic", availabilityTopic)
-            put("device", buildDeviceBlock())
+            put("device", buildDeviceBlock(localIp))
         }
     }
 
-    fun getDiscoveryConfigs(): List<Pair<String, JSONObject>> {
+    fun getDiscoveryConfigs(localIp: String): List<Pair<String, JSONObject>> {
         val configs = mutableListOf<Pair<String, JSONObject>>()
 
-        configs.addAll(buildSensorConfigs())
-        configs.addAll(buildBinarySensorConfigs())
-        configs.addAll(buildNumberConfigs())
-        configs.addAll(buildSwitchConfigs())
-        configs.addAll(buildButtonConfigs())
-        configs.addAll(buildTextConfigs())
+        configs.addAll(buildSensorConfigs(localIp))
+        configs.addAll(buildBinarySensorConfigs(localIp))
+        configs.addAll(buildNumberConfigs(localIp))
+        configs.addAll(buildSwitchConfigs(localIp))
+        configs.addAll(buildButtonConfigs(localIp))
+        configs.addAll(buildTextConfigs(localIp))
 
         return configs
     }
@@ -57,8 +60,8 @@ class MqttDiscovery(
      * Publish all HA Discovery configs to the MQTT broker via the given client.
      * Each config is published as a retained message (QoS 1) so HA picks them up.
      */
-    fun publishDiscoveryConfigs(client: KioskMqttClient) {
-        val configs = getDiscoveryConfigs()
+    fun publishDiscoveryConfigs(client: KioskMqttClient, localIp: String) {
+        val configs = getDiscoveryConfigs(localIp)
         Log.i("MqttDiscovery", "Publishing ${configs.size} HA Discovery configs...")
         for ((index, pair) in configs.withIndex()) {
             val (topic, payload) = pair
@@ -68,7 +71,7 @@ class MqttDiscovery(
         Log.i("MqttDiscovery", "All ${configs.size} HA Discovery configs published")
     }
 
-    private fun buildSensorConfigs(): List<Pair<String, JSONObject>> {
+    private fun buildSensorConfigs(localIp: String): List<Pair<String, JSONObject>> {
         data class SensorDef(
             val objectId: String,
             val name: String,
@@ -93,7 +96,7 @@ class MqttDiscovery(
         )
 
         return sensors.map { sensor ->
-            val config = baseConfig(sensor.objectId, sensor.name).apply {
+            val config = baseConfig(sensor.objectId, sensor.name, localIp).apply {
                 put("value_template", sensor.valueTemplate)
                 put("icon", sensor.icon)
                 sensor.deviceClass?.let { put("device_class", it) }
@@ -103,7 +106,7 @@ class MqttDiscovery(
         }
     }
 
-    private fun buildBinarySensorConfigs(): List<Pair<String, JSONObject>> {
+    private fun buildBinarySensorConfigs(localIp: String): List<Pair<String, JSONObject>> {
         data class BinarySensorDef(
             val objectId: String,
             val name: String,
@@ -123,7 +126,7 @@ class MqttDiscovery(
         )
 
         return binarySensors.map { sensor ->
-            val config = baseConfig(sensor.objectId, sensor.name).apply {
+            val config = baseConfig(sensor.objectId, sensor.name, localIp).apply {
                 put("value_template", sensor.valueTemplate)
                 put("payload_on", sensor.payloadOn)
                 put("payload_off", sensor.payloadOff)
@@ -133,7 +136,7 @@ class MqttDiscovery(
         }
     }
 
-    private fun buildNumberConfigs(): List<Pair<String, JSONObject>> {
+    private fun buildNumberConfigs(localIp: String): List<Pair<String, JSONObject>> {
         data class NumberDef(
             val objectId: String,
             val name: String,
@@ -149,20 +152,20 @@ class MqttDiscovery(
         val numbers = listOf(
             NumberDef(
                 "brightness_control", "Brightness Control",
-                "$baseTopic/$deviceId/set/brightness",
+                "$baseTopic/$topicId/set/brightness",
                 "{{ value_json.screen.brightness }}",
                 0, 100, 1, "%", "mdi:brightness-6"
             ),
             NumberDef(
                 "volume_control", "Volume Control",
-                "$baseTopic/$deviceId/set/volume",
+                "$baseTopic/$topicId/set/volume",
                 "{{ value_json.audio.volume }}",
                 0, 100, 1, "%", "mdi:volume-high"
             )
         )
 
         return numbers.map { number ->
-            val config = baseConfig(number.objectId, number.name).apply {
+            val config = baseConfig(number.objectId, number.name, localIp).apply {
                 put("command_topic", number.commandTopic)
                 put("value_template", number.valueTemplate)
                 put("min", number.min)
@@ -175,7 +178,7 @@ class MqttDiscovery(
         }
     }
 
-    private fun buildSwitchConfigs(): List<Pair<String, JSONObject>> {
+    private fun buildSwitchConfigs(localIp: String): List<Pair<String, JSONObject>> {
         data class SwitchDef(
             val objectId: String,
             val name: String,
@@ -187,20 +190,26 @@ class MqttDiscovery(
         val switches = listOf(
             SwitchDef(
                 "screen_power", "Screen Power",
-                "$baseTopic/$deviceId/set/screen",
+                "$baseTopic/$topicId/set/screen",
                 "{% if value_json.screen.on %}ON{% else %}OFF{% endif %}",
                 "mdi:monitor"
             ),
             SwitchDef(
                 "screensaver", "Screensaver",
-                "$baseTopic/$deviceId/set/screensaver",
+                "$baseTopic/$topicId/set/screensaver",
                 "{% if value_json.screen.screensaverActive %}ON{% else %}OFF{% endif %}",
                 "mdi:sleep"
+            ),
+            SwitchDef(
+                "motion_always_on", "Always-on Motion Detection",
+                "$baseTopic/$topicId/set/motion_always_on",
+                "{% if value_json.device.motionAlwaysOn %}ON{% else %}OFF{% endif %}",
+                "mdi:motion-sensor"
             )
         )
 
         return switches.map { switch ->
-            val config = baseConfig(switch.objectId, switch.name).apply {
+            val config = baseConfig(switch.objectId, switch.name, localIp).apply {
                 put("command_topic", switch.commandTopic)
                 put("value_template", switch.valueTemplate)
                 put("state_on", "ON")
@@ -213,7 +222,7 @@ class MqttDiscovery(
         }
     }
 
-    private fun buildButtonConfigs(): List<Pair<String, JSONObject>> {
+    private fun buildButtonConfigs(localIp: String): List<Pair<String, JSONObject>> {
         data class ButtonDef(
             val objectId: String,
             val name: String,
@@ -222,15 +231,15 @@ class MqttDiscovery(
         )
 
         val buttons = listOf(
-            ButtonDef("reload", "Reload", "$baseTopic/$deviceId/set/reload", "mdi:reload"),
-            ButtonDef("wake", "Wake", "$baseTopic/$deviceId/set/wake", "mdi:alarm"),
-            ButtonDef("reboot", "Reboot", "$baseTopic/$deviceId/set/reboot", "mdi:restart"),
-            ButtonDef("clear_cache", "Clear Cache", "$baseTopic/$deviceId/set/clear_cache", "mdi:delete-sweep"),
-            ButtonDef("lock", "Lock", "$baseTopic/$deviceId/set/lock", "mdi:lock")
+            ButtonDef("reload", "Reload", "$baseTopic/$topicId/set/reload", "mdi:reload"),
+            ButtonDef("wake", "Wake", "$baseTopic/$topicId/set/wake", "mdi:alarm"),
+            ButtonDef("reboot", "Reboot", "$baseTopic/$topicId/set/reboot", "mdi:restart"),
+            ButtonDef("clear_cache", "Clear Cache", "$baseTopic/$topicId/set/clear_cache", "mdi:delete-sweep"),
+            ButtonDef("lock", "Lock", "$baseTopic/$topicId/set/lock", "mdi:lock")
         )
 
         return buttons.map { button ->
-            val config = baseConfig(button.objectId, button.name).apply {
+            val config = baseConfig(button.objectId, button.name, localIp).apply {
                 put("command_topic", button.commandTopic)
                 put("payload_press", "PRESS")
                 put("icon", button.icon)
@@ -239,21 +248,25 @@ class MqttDiscovery(
         }
     }
 
-    private fun buildTextConfigs(): List<Pair<String, JSONObject>> {
+    private fun buildTextConfigs(localIp: String): List<Pair<String, JSONObject>> {
         data class TextDef(
             val objectId: String,
             val name: String,
             val commandTopic: String,
+            val valueTemplate: String,
             val icon: String
         )
 
         val texts = listOf(
-            TextDef("navigate_url", "Navigate URL", "$baseTopic/$deviceId/set/url", "mdi:web")
+            TextDef("navigate_url", "Navigate URL", "$baseTopic/$topicId/set/url", "{{ value_json.webview.currentUrl }}", "mdi:web"),
+            TextDef("tts", "Text to Speech", "$baseTopic/$topicId/set/tts", "{{ '' }}", "mdi:speaker-message"),
+            TextDef("toast", "Toast Message", "$baseTopic/$topicId/set/toast", "{{ '' }}", "mdi:message-text")
         )
 
         return texts.map { text ->
-            val config = baseConfig(text.objectId, text.name).apply {
+            val config = baseConfig(text.objectId, text.name, localIp).apply {
                 put("command_topic", text.commandTopic)
+                put("value_template", text.valueTemplate)
                 put("icon", text.icon)
             }
             Pair(discoveryTopic("text", text.objectId), config)
