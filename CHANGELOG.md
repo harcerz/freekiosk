@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- 🔧 **Camera/Microphone not working in WebView on Fire OS** (Echo Show, Fire tablets) (#63): auto-grant WebView media/geolocation permissions in kiosk mode — OS-level permission via `pm grant` still required
+
 
 ***
 
