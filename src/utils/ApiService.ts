@@ -6,9 +6,11 @@
 
 import { DeviceEventEmitter, NativeModules, NativeEventEmitter, Platform } from 'react-native';
 import { httpServer } from './HttpServerModule';
+import { mqttClient } from './MqttModule';
 import { StorageService } from './storage';
+import { getSecureMqttPassword } from './secureStorage';
 
-const { HttpServerModule } = NativeModules;
+const { HttpServerModule, MqttModule } = NativeModules;
 
 export interface ApiCallbacks {
   onSetBrightness?: (value: number) => void;
@@ -31,6 +33,7 @@ export interface ApiCallbacks {
   onRemoteKey?: (key: string) => void;
   onAutoBrightnessEnable?: (min: number, max: number) => void;
   onAutoBrightnessDisable?: () => void;
+  onSetMotionAlwaysOn?: (value: boolean) => void;
 }
 
 export interface AppStatus {
@@ -50,6 +53,8 @@ export interface AppStatus {
   autoBrightnessMin?: number;
   autoBrightnessMax?: number;
   scheduledSleep?: boolean;
+  motionDetected?: boolean;
+  motionAlwaysOn?: boolean;
 }
 
 class ApiServiceClass {
@@ -65,6 +70,7 @@ class ApiServiceClass {
     screenOn: true, // Assume screen is ON by default
     kioskMode: false,
     scheduledSleep: false,
+    motionDetected: false,
   };
   private isInitialized = false;
 
@@ -113,6 +119,64 @@ class ApiServiceClass {
       console.log(`ApiService: Server started on ${result.ip}:${result.port}`);
     } catch (error) {
       console.error('ApiService: Failed to auto-start server', error);
+    }
+  }
+
+  /**
+   * Start the MQTT client if enabled in settings
+   */
+  async autoStartMqtt(): Promise<void> {
+    try {
+      const enabled = await StorageService.getMqttEnabled();
+      if (!enabled) {
+        console.log('ApiService: MQTT disabled in settings');
+        return;
+      }
+
+      const brokerUrl = await StorageService.getMqttBrokerUrl();
+      if (!brokerUrl) {
+        console.log('ApiService: MQTT broker URL not configured');
+        return;
+      }
+
+      const port = await StorageService.getMqttPort();
+      const username = await StorageService.getMqttUsername();
+      const password = await getSecureMqttPassword();
+      const clientId = await StorageService.getMqttClientId();
+      const baseTopic = await StorageService.getMqttBaseTopic();
+      const discoveryPrefix = await StorageService.getMqttDiscoveryPrefix();
+      const statusInterval = await StorageService.getMqttStatusInterval();
+      const allowControl = await StorageService.getMqttAllowControl();
+      const deviceName = await StorageService.getMqttDeviceName();
+
+      await mqttClient.start({
+        brokerUrl,
+        port,
+        username: username || undefined,
+        password: password || undefined,
+        clientId: clientId || undefined,
+        baseTopic,
+        discoveryPrefix,
+        statusInterval: statusInterval * 1000, // Convert seconds to ms
+        allowControl,
+        deviceName: deviceName || undefined,
+      });
+
+      console.log(`ApiService: MQTT client started for ${brokerUrl}:${port}`);
+    } catch (error) {
+      console.error('ApiService: Failed to auto-start MQTT', error);
+    }
+  }
+
+  /**
+   * Stop MQTT client
+   */
+  async stopMqtt(): Promise<void> {
+    try {
+      await mqttClient.stop();
+      console.log('ApiService: MQTT client stopped');
+    } catch (error) {
+      console.error('ApiService: Failed to stop MQTT', error);
     }
   }
 
@@ -247,7 +311,13 @@ class ApiServiceClass {
             this.callbacks.onAutoBrightnessDisable();
           }
           break;
-          
+
+        case 'setMotionAlwaysOn':
+          if (this.callbacks.onSetMotionAlwaysOn) {
+            this.callbacks.onSetMotionAlwaysOn(params.value === true);
+          }
+          break;
+
         default:
           console.warn('ApiService: Unknown command', event.command);
       }
@@ -258,13 +328,21 @@ class ApiServiceClass {
 
   /**
    * Update app status (call this from KioskScreen when state changes)
+   * Forwards to both HTTP server and MQTT client native modules
    */
   updateStatus(status: Partial<AppStatus>): void {
     this.appStatus = { ...this.appStatus, ...status };
-    
-    // Send to native module for API responses
+
+    const statusJson = JSON.stringify(this.appStatus);
+
+    // Send to HTTP server native module
     if (HttpServerModule?.updateStatus) {
-      HttpServerModule.updateStatus(JSON.stringify(this.appStatus));
+      HttpServerModule.updateStatus(statusJson);
+    }
+
+    // Send to MQTT native module
+    if (MqttModule?.updateStatus) {
+      MqttModule.updateStatus(statusJson);
     }
   }
 
