@@ -174,10 +174,10 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
           <>
             <View style={styles.divider} />
             <SettingsSwitch
-              label="🔌 Allow Power Menu"
-              hint="When enabled, long-pressing the power button shows the power menu (Restart/Shutdown). When disabled, long-pressing the power button has no effect — it can only turn the screen on/off with a short press."
-              value={allowPowerButton}
-              onValueChange={onAllowPowerButtonChange}
+              label="🔌 Block Power Menu"
+              hint="When enabled, long-pressing the power button has no effect — it can only turn the screen on/off with a short press. When disabled, long-pressing shows the power menu (Restart/Shutdown). ⚠️ Blocking the power menu may cause audio to be muted on some Samsung/OneUI devices."
+              value={!allowPowerButton}
+              onValueChange={(value) => onAllowPowerButtonChange(!value)}
             />
             <View style={styles.divider} />
             <SettingsSwitch

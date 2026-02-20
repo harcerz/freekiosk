@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 
 All notable changes to FreeKiosk will be documented in this file.
@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- 🔊 **No audio in Lock Mode on Samsung/OneUI devices**: audio streams were muted by Samsung when `LOCK_TASK_FEATURE_NONE` was set, which is more restrictive than Android's own default behavior
+  - `LOCK_TASK_FEATURE_GLOBAL_ACTIONS` is now included by default (matches Android's own default when `setLockTaskFeatures()` is never called), preventing Samsung/OneUI from muting audio in `LOCK_TASK_MODE_LOCKED`
+  - Added `AudioManager` safety net: after entering lock task mode, `setMasterVolumeMuted(false)` is called followed by `ADJUST_UNMUTE` on all audio streams (MUSIC, NOTIFICATION, ALARM, RING)
+  - **Settings UI change**: "Allow Power Menu" toggle renamed to "🔌 Block Power Menu" with inverted logic — power menu is now **allowed by default**, admin can explicitly block it if needed
+  - **No migration required**: same storage key `@kiosk_allow_power_button` — existing user settings preserved; only new installs benefit from the new default
+  - Applied consistently across `KioskModule.kt`, `MainActivity.kt`, and `AppLauncherModule.kt`
 - 🔧 **Camera/Microphone not working in WebView on Fire OS** (Echo Show, Fire tablets) (#63): auto-grant WebView media/geolocation permissions in kiosk mode — OS-level permission via `pm grant` still required
 
 

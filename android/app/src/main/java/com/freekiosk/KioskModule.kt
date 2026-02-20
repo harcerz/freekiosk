@@ -112,16 +112,20 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                             }
                             
                             // Configure Lock Task features based on settings
+                            // GLOBAL_ACTIONS is included by default (Android's own default when setLockTaskFeatures is never called)
+                            // This prevents Samsung/OneUI from muting audio streams in lock task mode
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                                var lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+                                // Start with GLOBAL_ACTIONS as base (matches Android default behavior)
+                                var lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+                                
+                                // allowPowerButton=false means admin wants to BLOCK the power menu
+                                if (!allowPowerButton) {
+                                    lockTaskFeatures = lockTaskFeatures and DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS.inv()
+                                }
                                 
                                 // SYSTEM_INFO: shows non-interactive status bar info (time, battery)
-                                // Fixes Samsung/OneUI devices muting audio in lock task mode
                                 if (allowSystemInfo) {
                                     lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
-                                }
-                                if (allowPowerButton) {
-                                    lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
                                 }
                                 if (allowNotifications) {
                                     lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
@@ -129,12 +133,31 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                                     lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_HOME
                                 }
                                 dpm.setLockTaskFeatures(adminComponent, lockTaskFeatures)
-                                android.util.Log.d("KioskModule", "Lock task features set: powerButton=$allowPowerButton, notifications=$allowNotifications, systemInfo=$allowSystemInfo (flags=$lockTaskFeatures)")
+                                android.util.Log.d("KioskModule", "Lock task features set: blockPowerButton=${!allowPowerButton}, notifications=$allowNotifications, systemInfo=$allowSystemInfo (flags=$lockTaskFeatures)")
                             }
                             
                             dpm.setLockTaskPackages(adminComponent, whitelist.toTypedArray())
                             activity.startLockTask()
                             android.util.Log.d("KioskModule", "Full lock task started (Device Owner) with whitelist: $whitelist")
+                            
+                            // Safety net: force unmute audio streams after entering lock task
+                            // Samsung/OneUI devices may mute audio in LOCK_TASK_MODE_LOCKED
+                            try {
+                                dpm.setMasterVolumeMuted(adminComponent, false)
+                                val audioManager = reactApplicationContext.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                                val streams = intArrayOf(
+                                    android.media.AudioManager.STREAM_MUSIC,
+                                    android.media.AudioManager.STREAM_NOTIFICATION,
+                                    android.media.AudioManager.STREAM_ALARM,
+                                    android.media.AudioManager.STREAM_RING
+                                )
+                                for (stream in streams) {
+                                    audioManager.adjustStreamVolume(stream, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                                }
+                                android.util.Log.d("KioskModule", "Audio streams unmuted (Samsung audio fix)")
+                            } catch (e: Exception) {
+                                android.util.Log.w("KioskModule", "Could not unmute audio streams: ${e.message}")
+                            }
                         } else {
                             activity.startLockTask()
                             android.util.Log.d("KioskModule", "Screen pinning started")

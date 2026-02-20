@@ -1083,7 +1083,7 @@ export const StorageService = {
   getAllowPowerButton: async (): Promise<boolean> => {
     try {
       const value = await AsyncStorage.getItem(KEYS.ALLOW_POWER_BUTTON);
-      return value ? JSON.parse(value) : false; // Default OFF for maximum security
+      return value ? JSON.parse(value) : true; // Default ON - prevents Samsung/OneUI audio mute in lock task mode
     } catch (error) {
       console.error('Error getting allow power button:', error);
       return false;

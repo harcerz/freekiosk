@@ -108,7 +108,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [showVolume, setShowVolume] = useState<boolean>(true);
   const [showTime, setShowTime] = useState<boolean>(true);
   const [keyboardMode, setKeyboardMode] = useState<string>('default');
-  const [allowPowerButton, setAllowPowerButton] = useState<boolean>(false);
+  const [allowPowerButton, setAllowPowerButton] = useState<boolean>(true);
   const [allowNotifications, setAllowNotifications] = useState<boolean>(false);
   const [allowSystemInfo, setAllowSystemInfo] = useState<boolean>(false);
   const [returnMode, setReturnMode] = useState<string>('tap_anywhere');

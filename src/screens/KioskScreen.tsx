@@ -1096,7 +1096,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedBackButtonMode = str(K.BACK_BUTTON_MODE) ?? 'disabled';
       const savedBackButtonTimerDelay = num(K.BACK_BUTTON_TIMER_DELAY, 5);
       const savedKeyboardMode = str(K.KEYBOARD_MODE) ?? 'default';
-      const savedAllowPowerButton = bool(K.ALLOW_POWER_BUTTON, false);
+      const savedAllowPowerButton = bool(K.ALLOW_POWER_BUTTON, true);
       const savedAllowNotifications = bool(K.ALLOW_NOTIFICATIONS, false);
       const savedAllowSystemInfo = bool(K.ALLOW_SYSTEM_INFO, false);
 

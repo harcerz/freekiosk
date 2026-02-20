@@ -218,23 +218,29 @@ class MainActivity : ReactActivity() {
 
     try {
       // Read settings from AsyncStorage v2 database
-      val allowPowerButtonValue = getAsyncStorageValue("@kiosk_allow_power_button", "false")
+      // allowPowerButton: true = power menu allowed (default), false = blocked by admin
+      val allowPowerButtonValue = getAsyncStorageValue("@kiosk_allow_power_button", "true")
       val allowPowerButton = allowPowerButtonValue == "true"
       val allowNotificationsValue = getAsyncStorageValue("@kiosk_allow_notifications", "false")
       val allowNotifications = allowNotificationsValue == "true"
       val allowSystemInfoValue = getAsyncStorageValue("@kiosk_allow_system_info", "false")
       val allowSystemInfo = allowSystemInfoValue == "true"
       
-      // Configurer les features Lock Task based on settings
+      // Configure Lock Task features
+      // GLOBAL_ACTIONS is included by default (Android's own default when setLockTaskFeatures is never called)
+      // This prevents Samsung/OneUI from muting audio streams in lock task mode
       if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-        var lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+        // Start with GLOBAL_ACTIONS as base (matches Android default behavior)
+        var lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+        
+        // allowPowerButton=false means admin wants to BLOCK the power menu
+        if (!allowPowerButton) {
+          lockTaskFeatures = lockTaskFeatures and DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS.inv()
+        }
+        
         // SYSTEM_INFO: shows non-interactive status bar info (time, battery)
-        // Fixes Samsung/OneUI devices muting audio in lock task mode
         if (allowSystemInfo) {
           lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
-        }
-        if (allowPowerButton) {
-          lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
         }
         if (allowNotifications) {
           lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
@@ -242,7 +248,26 @@ class MainActivity : ReactActivity() {
           lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_HOME
         }
         devicePolicyManager.setLockTaskFeatures(adminComponent, lockTaskFeatures)
-        DebugLog.d("MainActivity", "Lock task features set: powerButton=$allowPowerButton, notifications=$allowNotifications, systemInfo=$allowSystemInfo (flags=$lockTaskFeatures)")
+        DebugLog.d("MainActivity", "Lock task features set: blockPowerButton=${!allowPowerButton}, notifications=$allowNotifications, systemInfo=$allowSystemInfo (flags=$lockTaskFeatures)")
+      }
+      
+      // Safety net: force unmute audio streams after configuring lock task
+      // Samsung/OneUI devices may mute audio in LOCK_TASK_MODE_LOCKED
+      try {
+        devicePolicyManager.setMasterVolumeMuted(adminComponent, false)
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val streams = intArrayOf(
+          android.media.AudioManager.STREAM_MUSIC,
+          android.media.AudioManager.STREAM_NOTIFICATION,
+          android.media.AudioManager.STREAM_ALARM,
+          android.media.AudioManager.STREAM_RING
+        )
+        for (stream in streams) {
+          audioManager.adjustStreamVolume(stream, android.media.AudioManager.ADJUST_UNMUTE, 0)
+        }
+        DebugLog.d("MainActivity", "Audio streams unmuted (Samsung audio fix)")
+      } catch (e: Exception) {
+        DebugLog.d("MainActivity", "Could not unmute audio streams: ${e.message}")
       }
 
       val samsungUpdateApps = arrayOf(
@@ -352,7 +377,7 @@ class MainActivity : ReactActivity() {
       if (!isTaskLocked()) {
         // Check if power button (GlobalActions) is allowed — if so, the brief focus
         // loss may be from the power menu. Delay the re-lock to avoid dismissing it.
-        val allowPowerButton = getAsyncStorageValue("@kiosk_allow_power_button", "false") == "true"
+        val allowPowerButton = getAsyncStorageValue("@kiosk_allow_power_button", "true") == "true"
         val timeSinceFocusLost = System.currentTimeMillis() - lastFocusLostTime
         
         if (allowPowerButton && timeSinceFocusLost < 2000L) {

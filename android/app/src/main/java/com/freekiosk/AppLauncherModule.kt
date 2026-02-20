@@ -45,14 +45,16 @@ class AppLauncherModule(reactContext: ReactApplicationContext) : ReactContextBas
                             if (dpm.isDeviceOwnerApp(reactApplicationContext.packageName)) {
                                 // Configure lock task features respecting user settings
                                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                                    var lockTaskFeatures = android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+                                    // Start with GLOBAL_ACTIONS as base (Android default, prevents Samsung audio mute)
+                                    var lockTaskFeatures = android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
                                     
                                     // Read user settings from AsyncStorage
                                     try {
                                         val dbPath = reactApplicationContext.getDatabasePath("RKStorage").absolutePath
                                         val db = android.database.sqlite.SQLiteDatabase.openDatabase(dbPath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
                                         val cursor = db.rawQuery("SELECT value FROM catalystLocalStorage WHERE key = ?", arrayOf("@kiosk_allow_power_button"))
-                                        val allowPowerButton = if (cursor.moveToFirst()) cursor.getString(0) == "true" else false
+                                        // Default to true (power menu allowed) - same as storage default
+                                        val allowPowerButton = if (cursor.moveToFirst()) cursor.getString(0) == "true" else true
                                         cursor.close()
                                         
                                         val cursor2 = db.rawQuery("SELECT value FROM catalystLocalStorage WHERE key = ?", arrayOf("@kiosk_allow_notifications"))
@@ -64,18 +66,19 @@ class AppLauncherModule(reactContext: ReactApplicationContext) : ReactContextBas
                                         cursor3.close()
                                         db.close()
                                         
+                                        // allowPowerButton=false means admin wants to BLOCK the power menu
+                                        if (!allowPowerButton) {
+                                            lockTaskFeatures = lockTaskFeatures and android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS.inv()
+                                        }
                                         if (allowSystemInfo) {
                                             lockTaskFeatures = lockTaskFeatures or android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
-                                        }
-                                        if (allowPowerButton) {
-                                            lockTaskFeatures = lockTaskFeatures or android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
                                         }
                                         if (allowNotifications) {
                                             lockTaskFeatures = lockTaskFeatures or android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
                                         }
-                                        DebugLog.d("AppLauncherModule", "Lock task features: powerButton=$allowPowerButton, notifications=$allowNotifications, systemInfo=$allowSystemInfo (flags=$lockTaskFeatures)")
+                                        DebugLog.d("AppLauncherModule", "Lock task features: blockPowerButton=${!allowPowerButton}, notifications=$allowNotifications, systemInfo=$allowSystemInfo (flags=$lockTaskFeatures)")
                                     } catch (e: Exception) {
-                                        DebugLog.d("AppLauncherModule", "Could not read settings, using LOCK_TASK_FEATURE_NONE: ${e.message}")
+                                        DebugLog.d("AppLauncherModule", "Could not read settings, using GLOBAL_ACTIONS default: ${e.message}")
                                     }
                                     
                                     dpm.setLockTaskFeatures(adminComponent, lockTaskFeatures)
