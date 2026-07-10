@@ -213,6 +213,15 @@ dependencies {
     // HiveMQ MQTT Client for Home Assistant integration
     implementation("com.hivemq:hivemq-mqtt-client:1.3.12")
 
+    // Dentrio clinic hub: NextAuth session + REST + Socket.IO to the clinic
+    // server, relayed to the room's Wear OS watch via the Data Layer.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("io.socket:socket.io-client:2.1.2") {
+        // Pulls in an ancient org.json — Android ships its own.
+        exclude group: 'org.json', module: 'json'
+    }
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
+
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
     } else {

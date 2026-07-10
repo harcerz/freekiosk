@@ -7,6 +7,7 @@ import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.freekiosk.api.HttpServerPackage
+import com.freekiosk.hub.HubPackage
 import com.freekiosk.mqtt.MqttPackage
 
 class MainApplication : Application(), ReactApplication {
@@ -28,6 +29,7 @@ class MainApplication : Application(), ReactApplication {
           add(UpdatePackage())
           add(HttpServerPackage())
           add(MqttPackage())
+          add(HubPackage())
           add(BlockingOverlayPackage())
           add(AutoBrightnessPackage())
           add(PrintPackage())

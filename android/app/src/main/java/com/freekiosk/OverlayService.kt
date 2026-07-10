@@ -188,6 +188,11 @@ class OverlayService : Service() {
                     } catch (e: Exception) {
                         DebugLog.d("OverlayService", "MQTT watchdog check failed: ${e.message}")
                     }
+                    try {
+                        com.freekiosk.hub.HubModule.checkAndReconnect()
+                    } catch (e: Exception) {
+                        DebugLog.d("OverlayService", "Hub watchdog check failed: ${e.message}")
+                    }
                 }
                 Intent.ACTION_SCREEN_OFF -> {
                     DebugLog.d("OverlayService", "Screen OFF")
@@ -1527,6 +1532,12 @@ class OverlayService : Service() {
                     com.freekiosk.mqtt.MqttModule.checkAndReconnect()
                 } catch (e: Exception) {
                     // MQTT not active or not configured, ignore
+                }
+                try {
+                    // Dentrio clinic hub rides the same watchdog tick.
+                    com.freekiosk.hub.HubModule.checkAndReconnect()
+                } catch (e: Exception) {
+                    // Hub not active or not configured, ignore
                 }
                 mqttWatchdogHandler.postDelayed(this, MQTT_WATCHDOG_INTERVAL)
             }

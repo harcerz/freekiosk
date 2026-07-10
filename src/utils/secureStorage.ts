@@ -9,6 +9,7 @@ const { KioskModule } = NativeModules;
 const PIN_SERVICE = 'freekiosk_pin';
 const API_KEY_SERVICE = 'freekiosk_api_key';
 const MQTT_PASSWORD_SERVICE = 'freekiosk_mqtt_password';
+const HUB_DEVICE_TOKEN_SERVICE = 'freekiosk_hub_device_token';
 const WIFI_PASSWORD_SERVICE_PREFIX = 'freekiosk_wifi_password:';
 const BASIC_AUTH_PASSWORD_SERVICE = 'freekiosk_basic_auth_password';
 const LEGACY_API_KEY = '@kiosk_rest_api_key'; // Legacy AsyncStorage key for migration
@@ -824,6 +825,66 @@ export async function clearSecureMqttPassword(): Promise<void> {
     console.log('[SecureStorage] MQTT password cleared');
   } catch (error) {
     console.error('[SecureStorage] Error clearing MQTT password:', error);
+  }
+}
+
+// ============================================
+// DENTRIO HUB DEVICE TOKEN SECURE STORAGE
+// ============================================
+
+/**
+ * Save the clinic hub deviceToken securely in Keychain (never AsyncStorage —
+ * it is a long-lived credential equivalent to a tablet login).
+ */
+export async function saveSecureHubToken(token: string): Promise<boolean> {
+  try {
+    if (!token || token.trim() === '') {
+      await clearSecureHubToken();
+      return true;
+    }
+
+    await Keychain.setGenericPassword('hub_device_token', token, {
+      service: HUB_DEVICE_TOKEN_SERVICE,
+      accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
+    });
+
+    console.log('[SecureStorage] Hub device token saved to Keychain');
+    return true;
+  } catch (error) {
+    console.error('[SecureStorage] Error saving hub device token:', error);
+    return false;
+  }
+}
+
+/**
+ * Get the clinic hub deviceToken from secure storage
+ */
+export async function getSecureHubToken(): Promise<string> {
+  try {
+    const credentials = await Keychain.getGenericPassword({
+      service: HUB_DEVICE_TOKEN_SERVICE,
+    });
+
+    if (credentials && credentials.password) {
+      return credentials.password;
+    }
+
+    return '';
+  } catch (error) {
+    console.error('[SecureStorage] Error getting hub device token:', error);
+    return '';
+  }
+}
+
+/**
+ * Clear the clinic hub deviceToken from secure storage
+ */
+export async function clearSecureHubToken(): Promise<void> {
+  try {
+    await Keychain.resetGenericPassword({ service: HUB_DEVICE_TOKEN_SERVICE });
+    console.log('[SecureStorage] Hub device token cleared');
+  } catch (error) {
+    console.error('[SecureStorage] Error clearing hub device token:', error);
   }
 }
 

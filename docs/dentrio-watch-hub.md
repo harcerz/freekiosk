@@ -93,6 +93,27 @@ przycisk 🆘 (long-press), Ongoing Activity ze stanem połączenia.
 Fallback gdy parowanie z tabletem niemożliwe: transport wymienny — zamiast WearRelay
 bezpośredni socket WiFi z zegarka (kontrakt REST/socket ten sam).
 
+## Etapy dodatkowe (zgłoszone 2026-07-10)
+
+**B4 — aktualizacje z serwera kliniki (zamiast GitHub Releases):**
+- Fork: `UpdateModule.kt` (dziś: GitHub API + pobranie APK przez `HttpURLConnection`)
+  dostaje konfigurowalny `updateUrl` (klucz `@kiosk_hub_update_url`, domyślnie pusty =
+  zachowanie upstreamowe). Manifest JSON: `{ versionName, versionCode, apkUrl, notes }`.
+- Stoma: upload APK w panelu admina (Ustawienia → Tablety → „Aplikacja kiosku"),
+  endpointy `GET /api/tablets/app-update/manifest` + `GET /api/tablets/app-update/apk`
+  (serwowane z `https://portal.local/...` — instancja kliniki). Tablet sprawdza przy
+  starcie + raz dziennie; instalacja jak dziś (REQUEST_INSTALL_PACKAGES, Device Owner).
+
+**B5 — zarządzanie tabletami w panelu stomy przez REST API FreeKioska:**
+- FreeKiosk ma wbudowany serwer HTTP (NanoHTTPD, auth `X-Api-Key`, docs/rest-api.md):
+  status urządzenia (bateria, ekran, WiFi, URL), komendy (screenOn/Off, brightness,
+  loadUrl, reload, tts, toast, screenshot, restart aplikacji).
+- Stoma (LAN wspólny z tabletami): w `TabletDevice` dodać `kioskApiUrl` + `kioskApiKey`
+  (szyfrowane), panel Ustawienia → Tablety rozbudować o kartę „Zarządzanie":
+  podgląd statusu na żywo, akcje zdalne, zbiorcze operacje (np. wygaś ekrany po
+  godzinach). Proxy przez serwer stomy (przeglądarka nie ma dostępu do IP tabletów
+  przy HTTPS — mixed content).
+
 ## Zasady forka
 
 - Sync z upstreamem: `git fetch upstream && git push origin upstream/main:main`,

@@ -139,6 +139,13 @@ const KEYS = {
   MQTT_ALLOW_CONTROL: '@kiosk_mqtt_allow_control',
   MQTT_DEVICE_NAME: '@kiosk_mqtt_device_name',
   MQTT_MOTION_ALWAYS_ON: '@kiosk_mqtt_motion_always_on',
+
+  // Dentrio clinic hub (watch relay) — the deviceToken itself lives in
+  // Keychain (secureStorage), never in AsyncStorage.
+  HUB_ENABLED: '@kiosk_hub_enabled',
+  HUB_SERVER_URL: '@kiosk_hub_server_url',
+  HUB_SOCKET_URL: '@kiosk_hub_socket_url',
+  HUB_DEVICE_ID: '@kiosk_hub_device_id',
   // Beta Updates
   BETA_UPDATES_ENABLED: '@kiosk_beta_updates_enabled',
   // Managed Apps (multi-app mode, background apps, accessibility whitelist)
@@ -2441,6 +2448,79 @@ export const StorageService = {
       await AsyncStorage.setItem(KEYS.MQTT_MOTION_ALWAYS_ON, JSON.stringify(value));
     } catch (error) {
       console.error('Error saving MQTT motion always on:', error);
+    }
+  },
+
+  // DENTRIO CLINIC HUB (watch relay)
+  saveHubEnabled: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.HUB_ENABLED, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving hub enabled:', error);
+    }
+  },
+
+  getHubEnabled: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.HUB_ENABLED);
+      return value ? JSON.parse(value) : false;
+    } catch (error) {
+      console.error('Error getting hub enabled:', error);
+      return false;
+    }
+  },
+
+  saveHubServerUrl: async (url: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.HUB_SERVER_URL, url);
+    } catch (error) {
+      console.error('Error saving hub server URL:', error);
+    }
+  },
+
+  getHubServerUrl: async (): Promise<string> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.HUB_SERVER_URL);
+      return value || '';
+    } catch (error) {
+      console.error('Error getting hub server URL:', error);
+      return '';
+    }
+  },
+
+  saveHubSocketUrl: async (url: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.HUB_SOCKET_URL, url);
+    } catch (error) {
+      console.error('Error saving hub socket URL:', error);
+    }
+  },
+
+  getHubSocketUrl: async (): Promise<string> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.HUB_SOCKET_URL);
+      return value || '';
+    } catch (error) {
+      console.error('Error getting hub socket URL:', error);
+      return '';
+    }
+  },
+
+  saveHubDeviceId: async (id: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.HUB_DEVICE_ID, id);
+    } catch (error) {
+      console.error('Error saving hub device ID:', error);
+    }
+  },
+
+  getHubDeviceId: async (): Promise<string> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.HUB_DEVICE_ID);
+      return value || '';
+    } catch (error) {
+      console.error('Error getting hub device ID:', error);
+      return '';
     }
   },
 

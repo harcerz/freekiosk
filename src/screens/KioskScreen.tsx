@@ -18,6 +18,7 @@ import BlockingOverlayModule from '../utils/BlockingOverlayModule';
 import AutoBrightnessModule from '../utils/AutoBrightnessModule';
 import { ApiService } from '../utils/ApiService';
 import { mqttClient } from '../utils/MqttModule';
+import { hubClient } from '../utils/HubModule';
 import DeviceControlService from '../services/DeviceControlService';
 import { ScheduledEvent, getActiveEvent } from '../types/planner';
 import { DashboardTile } from '../types/dashboard';
@@ -745,6 +746,9 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         // Expected when MQTT is disabled or not configured
         console.log('ApiService: MQTT auto-start skipped:', (e as Error).message);
       }
+
+      // Auto-start the Dentrio clinic hub (watch relay) if enabled
+      await hubClient.autoStart();
     };
 
     initApiService();
@@ -762,12 +766,22 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         } catch (e) {
           // MQTT not enabled or not configured, ignore
         }
+        try {
+          // Clinic hub: same foreground-recovery pattern (the native socket
+          // also self-heals via the OverlayService watchdog).
+          if (!(await hubClient.isRunning())) {
+            await hubClient.autoStart();
+          }
+        } catch (e) {
+          // Hub not enabled or not configured, ignore
+        }
       }
     });
 
     return () => {
       mqttAppStateSubscription.remove();
       ApiService.stopMqtt();
+      hubClient.stop();
       ApiService.destroy();
     };
   }, []);
