@@ -9,6 +9,7 @@ import {
   SettingsSection,
   SettingsButton,
   SettingsInfoBox,
+  SettingsInput,
   BackupRestoreSection,
 } from '../../../components/settings';
 import { ApiSettingsSection } from '../../../components/ApiSettingsSection';
@@ -35,6 +36,8 @@ interface AdvancedTabProps {
   updateInfo: any;
   betaUpdatesEnabled: boolean;
   onBetaUpdatesChange: (value: boolean) => void;
+  customUpdateUrl: string;
+  onCustomUpdateUrlChange: (value: string) => void;
   onCheckForUpdates: () => void;
   onDownloadUpdate: () => void;
   
@@ -63,6 +66,8 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
   updateInfo,
   betaUpdatesEnabled,
   onBetaUpdatesChange,
+  customUpdateUrl,
+  onCustomUpdateUrlChange,
   onCheckForUpdates,
   onDownloadUpdate,
   certificates,
@@ -161,7 +166,17 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
-        
+
+        <SettingsInput
+          label="Custom update server (optional)"
+          value={customUpdateUrl}
+          onChangeText={onCustomUpdateUrlChange}
+          placeholder="e.g. https://portal.local/api/tablets/app-update/manifest"
+          keyboardType="url"
+          icon="server-network"
+          hint="JSON manifest URL for fleet-managed updates. Leave empty to use GitHub Releases."
+        />
+
         <SettingsButton
           title={checkingUpdate ? 'Checking...' : downloading ? 'Downloading...' : 'Check for Updates'}
           icon={checkingUpdate ? 'timer-sand' : downloading ? 'download' : 'magnify'}

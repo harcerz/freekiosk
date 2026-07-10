@@ -55,6 +55,19 @@ export default {
   },
 
   /**
+   * Check for updates from a custom update server (fleet management panel)
+   * instead of GitHub. The server hosts a JSON manifest:
+   * { version, downloadUrl, name?, notes?, publishedAt?, isPrerelease? }.
+   * No-op in Play Store builds.
+   */
+  checkForUpdatesFromUrl(manifestUrl: string): Promise<UpdateInfo> {
+    if (!ENABLE_SELF_UPDATE) {
+      return Promise.reject(new Error('Self-update disabled in Play Store builds'));
+    }
+    return UpdateModule.checkForUpdatesFromUrl(manifestUrl);
+  },
+
+  /**
    * Check if the app has permission to install APKs from unknown sources.
    * No-op in Play Store builds.
    */

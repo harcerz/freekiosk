@@ -146,6 +146,10 @@ const KEYS = {
   HUB_SERVER_URL: '@kiosk_hub_server_url',
   HUB_SOCKET_URL: '@kiosk_hub_socket_url',
   HUB_DEVICE_ID: '@kiosk_hub_device_id',
+
+  // Custom update server: when set, "Check for Updates" queries this JSON
+  // manifest URL instead of GitHub Releases (fleet-managed deployments).
+  CUSTOM_UPDATE_URL: '@kiosk_custom_update_url',
   // Beta Updates
   BETA_UPDATES_ENABLED: '@kiosk_beta_updates_enabled',
   // Managed Apps (multi-app mode, background apps, accessibility whitelist)
@@ -2448,6 +2452,25 @@ export const StorageService = {
       await AsyncStorage.setItem(KEYS.MQTT_MOTION_ALWAYS_ON, JSON.stringify(value));
     } catch (error) {
       console.error('Error saving MQTT motion always on:', error);
+    }
+  },
+
+  // CUSTOM UPDATE SERVER
+  saveCustomUpdateUrl: async (url: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.CUSTOM_UPDATE_URL, url);
+    } catch (error) {
+      console.error('Error saving custom update URL:', error);
+    }
+  },
+
+  getCustomUpdateUrl: async (): Promise<string> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.CUSTOM_UPDATE_URL);
+      return value || '';
+    } catch (error) {
+      console.error('Error getting custom update URL:', error);
+      return '';
     }
   },
 

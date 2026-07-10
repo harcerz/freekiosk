@@ -174,6 +174,66 @@ class UpdateModule(reactContext: ReactApplicationContext) : ReactContextBaseJava
     }
 
     /**
+     * Check for updates from a custom update server instead of GitHub.
+     *
+     * The server hosts a JSON manifest (e.g. served by a fleet-management
+     * panel) with the shape:
+     *   { "version": "1.3.0", "name": "...", "notes": "...",
+     *     "publishedAt": "2026-07-10T12:00:00Z", "downloadUrl": "https://.../kiosk.apk" }
+     * `version` and `downloadUrl` are required; the result map matches
+     * checkForUpdatesWithChannel so the JS update flow is identical.
+     */
+    @ReactMethod
+    fun checkForUpdatesFromUrl(manifestUrl: String, promise: Promise) {
+        if (!BuildConfig.ENABLE_SELF_UPDATE) {
+            promise.reject("DISABLED", "Self-update is disabled in Play Store builds")
+            return
+        }
+        if (manifestUrl.isBlank()) {
+            promise.reject("INVALID_URL", "Manifest URL is empty")
+            return
+        }
+        Thread {
+            try {
+                android.util.Log.d("UpdateModule", "Checking updates from custom server: $manifestUrl")
+
+                val connection = URL(manifestUrl).openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("User-Agent", "FreeKiosk-Updater")
+
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val manifest = JSONObject(response)
+
+                    val version = manifest.getString("version").removePrefix("v")
+                    val downloadUrl = manifest.getString("downloadUrl")
+
+                    val result = Arguments.createMap().apply {
+                        putString("version", version)
+                        putString("name", manifest.optString("name", ""))
+                        putString("notes", manifest.optString("notes", ""))
+                        putString("publishedAt", manifest.optString("publishedAt", ""))
+                        putString("downloadUrl", downloadUrl)
+                        putBoolean("isPrerelease", manifest.optBoolean("isPrerelease", false))
+                    }
+
+                    android.util.Log.d("UpdateModule", "Custom server update: $version at $downloadUrl")
+                    promise.resolve(result)
+                } else {
+                    promise.reject("ERROR", "Update server returned code: $responseCode")
+                }
+                connection.disconnect()
+            } catch (e: Exception) {
+                promise.reject("ERROR", "Failed to check custom update server: ${e.message}")
+            }
+        }.start()
+    }
+
+    /**
      * Check if the app has permission to install APKs from unknown sources.
      * On API < 26, this is always true (global setting, not per-app).
      */

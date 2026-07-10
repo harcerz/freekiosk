@@ -241,6 +241,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [downloading, setDownloading] = useState<boolean>(false);
   const [currentVersion, setCurrentVersion] = useState<string>('');
   const [betaUpdatesEnabled, setBetaUpdatesEnabled] = useState<boolean>(false);
+  // Custom update server (fleet-managed deployments) — empty = GitHub Releases.
+  const [customUpdateUrl, setCustomUpdateUrl] = useState<string>('');
 
   // Camera2 fallback — uses Camera2 API directly via HttpServerModule to enumerate cameras.
   // This is needed for devices where CameraX/ProcessCameraProvider fails entirely
@@ -367,6 +369,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       if (ENABLE_SELF_UPDATE) {
         const savedBetaUpdates = await StorageService.getBetaUpdatesEnabled();
         setBetaUpdatesEnabled(savedBetaUpdates);
+        const savedCustomUpdateUrl = await StorageService.getCustomUpdateUrl();
+        setCustomUpdateUrl(savedCustomUpdateUrl);
       }
     } catch (error) {
       console.error('Failed to load current version:', error);
@@ -1126,11 +1130,15 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     
     try {
       const currentVersionInfo = await UpdateModule.getCurrentVersion();
-      const latestUpdate = await UpdateModule.checkForUpdatesWithChannel(betaUpdatesEnabled);
+      // A configured custom update server takes precedence over GitHub —
+      // fleet-managed devices get their APK from the management panel.
+      const latestUpdate = customUpdateUrl.trim()
+        ? await UpdateModule.checkForUpdatesFromUrl(customUpdateUrl.trim())
+        : await UpdateModule.checkForUpdatesWithChannel(betaUpdatesEnabled);
       const currentVer = currentVersionInfo.versionName;
       const latestVer = latestUpdate.version;
-      
-      console.log(`Version comparison: current=${currentVer}, latest=${latestVer}, beta=${betaUpdatesEnabled}`);
+
+      console.log(`Version comparison: current=${currentVer}, latest=${latestVer}, beta=${betaUpdatesEnabled}, customServer=${!!customUpdateUrl.trim()}`);
       
       // Use semantic version comparison instead of simple string equality
       const versionComparison = compareVersions(latestVer, currentVer);
@@ -2124,6 +2132,11 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             onBetaUpdatesChange={async (value: boolean) => {
               setBetaUpdatesEnabled(value);
               await StorageService.saveBetaUpdatesEnabled(value);
+            }}
+            customUpdateUrl={customUpdateUrl}
+            onCustomUpdateUrlChange={async (value: string) => {
+              setCustomUpdateUrl(value);
+              await StorageService.saveCustomUpdateUrl(value.trim());
             }}
             onCheckForUpdates={handleCheckForUpdates}
             onDownloadUpdate={() => handleDownloadUpdate()}
