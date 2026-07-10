@@ -1,0 +1,103 @@
+# Dentrio Watch Hub — plan implementacji (fork)
+
+**Gałąź:** `feat/dentrio-watch-hub` | **Status:** plan zatwierdzony, implementacja etapami
+**Kontekst:** tablet gabinetowy (FreeKiosk, tryb kiosk z WebView na system stomy) staje się
+hubem dla zegarka Wear OS (TicWatch Pro 5) sparowanego przez Bluetooth. Kontrakt serwerowy
+(Etap A) jest zamrożony w repo stomy: `docs/superpowers/specs/2026-07-10-watch-companion-design.md`
+i `docs/processes/messenger/README.md` (sekcja „Kompan-zegarek gabinetu").
+
+## Kontrakt hub ↔ serwer stomy (zamrożony)
+
+- **Auth:** `GET /api/auth/csrf` → `POST /api/auth/callback/tablet` (form: `csrfToken`,
+  `deviceToken`, `deviceId`, `json=true`) → cookie sesyjne NextAuth (ważne ~100 lat).
+- **REST:** `GET /api/tablet/watch/summary` (gabinet, `conversationId`, bieżąca wizyta z
+  `minutesOverrun`, następna z `isWaiting`/`minutesWaiting`, ostatnie 10 wiadomości z
+  `reactions` + `myReactions`), `POST /api/tablet/watch/message {content}`,
+  `POST /api/tablet/watch/help-call {note?}` (429 = cooldown 30 s),
+  `POST /api/messenger/messages/{id}/reactions {emoji}` (toggle).
+- **Socket.IO** (port 3003): nasłuch globalnie broadcastowanych `appointment-updated`
+  (filtr `data.roomId === room.id z summary`), `join-conversation {conversationId}` →
+  `message-new`, `message-reaction-update`. **NIGDY nie emitować `messenger-auth`**
+  (zanieczyszcza prezencję personelu). Każdy sygnał socketowy ⇒ re-fetch summary
+  (payloady niosą tylko ID).
+
+## Architektura w forku
+
+```
+┌───────────────────────── :app (com.freekiosk) ─────────────────────────┐
+│ RN/TS: ClinicHubSettingsSection (AdvancedTab) ──▶ HubModule (bridge)   │
+│ Kotlin: WatchHubService (FGS, specialUse — jak KioskWatchdogService)   │
+│   ├─ ClinicHubClient  (OkHttp+CookieJar: login, REST; socket.io-java)  │
+│   └─ WearRelay        (DataClient: stan → /watch/summary;              │
+│                        MessageClient: eventy + akcje z zegarka)        │
+└────────────────────────────────────────────────────────────────────────┘
+            ▲ Bluetooth / Wearable Data Layer (ten sam applicationId+klucz)
+┌────────── :wear (Compose for Wear, minSdk 30) ──────────┐
+│ Tile teraz/następny • powiadomienia czatu z akcjami      │
+│ (👍 + szybkie odpowiedzi) • alarm przekroczenia czasu     │
+│ • przycisk 🆘 z potwierdzeniem • Ongoing Activity        │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Decyzje** (na bazie eksploracji kodu 2026-07-10):
+- Cała ścieżka danych w Kotlinie (wzorzec = stack MQTT: `mqtt/MqttModule.kt` +
+  `KioskMqttClient.kt`); JS tylko start/stop/status przez bridge — jak `MqttModule.ts`.
+- Sesja NextAuth w OkHttp `CookieJar` (persystowana w EncryptedSharedPreferences);
+  `deviceToken` w Keychain przez `secureStorage.ts` (wzorzec `freekiosk_mqtt_password`).
+- Konfiguracja: klucze `@kiosk_hub_enabled`, `@kiosk_hub_server_url`, `@kiosk_hub_socket_url`,
+  `@kiosk_hub_device_id` w `storage.ts`; sekcja UI w `AdvancedTab.tsx` (wzorzec
+  `MqttSettingsSection.tsx` — status na żywo, test połączenia).
+- Keep-alive: FGS `START_STICKY` + hak `checkAndReconnect()` w `OverlayService`
+  (obok MQTT) + start z `BootReceiver` + autostart w `KioskScreen` useEffect (~690-775).
+- Data Layer paths: `/watch/summary` (DataItem, pełny stan), `/watch/event/chat`
+  (Message, „nowa wiadomość" — wake), akcje z zegarka: `/watch/action/reaction`
+  `{messageId, emoji}`, `/watch/action/quick-reply {content}`, `/watch/action/help-call`.
+
+## Etapy
+
+**B1 — szkielet + połączenie kliniczne (bez zegarka, testowalne od razu):**
+1. `android/app/build.gradle`: deps `io.socket:socket.io-client:2.1.2` (uwaga na
+   META-INF merge — precedens: excludes Netty dla HiveMQ, linie ~150-154),
+   `com.squareup.okhttp3:okhttp`, `com.google.android.gms:play-services-wearable`.
+2. Pakiet `com.freekiosk.hub`: `HubPackage.kt`, `HubModule.kt`
+   (`startHub(config, Promise)`, `stopHub`, `getHubState(Promise)`, eventy
+   `onHubConnectionChanged`, `onHubSummaryChanged`), rejestracja w `MainApplication.kt`.
+3. `ClinicHubClient.kt`: login (csrf→callback/tablet), `fetchSummary()`,
+   `sendQuickReply()`, `sendHelpCall()`, `toggleReaction()`; retry/backoff.
+4. `WatchHubService.kt` (FGS, manifest `specialUse`): trzyma klienta + socket,
+   re-fetch summary na eventy i co 60 s fallback.
+5. TS: `src/utils/HubModule.ts` (bridge), klucze w `storage.ts`,
+   `saveSecureHubToken()` w `secureStorage.ts`, `ClinicHubSettingsSection.tsx`
+   w `AdvancedTab` (URL, deviceId, token, przełącznik, status, „Testuj połączenie"),
+   autostart w `KioskScreen`, hak reconnect w `OverlayService`, start w `BootReceiver`.
+   Klucze hub (bez tokena!) do allow-listy `BackupService.ts`.
+   Weryfikacja B1: emulator/tablet → ustawienia → połączono; logcat pokazuje summary
+   i reakcje na eventy socketa (dev stoma).
+
+**B2 — relay Data Layer (:app):**
+`WearRelay.kt` — `DataClient.putDataItem("/watch/summary", …)` po każdej zmianie stanu,
+`MessageClient` na eventy chat/help; `MessageClient.OnMessageReceivedListener` na
+`/watch/action/*` → wywołania `ClinicHubClient` → odpowiedź statusem. `CapabilityClient`
+do wykrywania obecności zegarka (status „zegarek połączony" w ustawieniach).
+
+**C — moduł `:wear` (Compose for Wear):**
+`include ':wear'` w `settings.gradle` (poza autolinkingiem RN), `wearApp project(':wear')`
+w `:app` (embedded delivery), ten sam `applicationId com.freekiosk` i klucz podpisu.
+Ekran główny (teraz/następny, czerwone pulsujące pole gdy `isWaiting` — konwencja
+webowa), lista ostatnich wiadomości z reakcją 👍 i szybkimi odpowiedziami,
+powiadomienia lokalne z akcjami, wibracja gdy `minutesOverrun>0 && isWaiting`,
+przycisk 🆘 (long-press), Ongoing Activity ze stanem połączenia.
+
+**Integracja sprzętowa (dawny SPIKE 0, na końcu):** parowanie TicWatch Pro 5 z tabletem
+(Mobvoi Health + Google Play na tablecie), test zasięgu BT w gabinecie, bateria na zmianie.
+Fallback gdy parowanie z tabletem niemożliwe: transport wymienny — zamiast WearRelay
+bezpośredni socket WiFi z zegarka (kontrakt REST/socket ten sam).
+
+## Zasady forka
+
+- Sync z upstreamem: `git fetch upstream && git push origin upstream/main:main`,
+  potem merge `main` → `feat/dentrio-watch-hub`.
+- Zmiany ogólnego zastosowania (nie-kliniczne) wydzielać do osobnych gałęzi od `main`
+  i PR-ować do upstreamu (RushB-fr/freekiosk).
+- Konwencje repo: CLAUDE.md (moduł natywny = Kotlin + bridge TS aktualizowane razem),
+  conventional commits.
