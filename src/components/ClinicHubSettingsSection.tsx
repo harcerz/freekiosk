@@ -156,16 +156,19 @@ export const ClinicHubSettingsSection: React.FC<ClinicHubSettingsSectionProps> =
   const handleServerUrlChange = async (value: string) => {
     setServerUrl(value);
     await StorageService.saveHubServerUrl(value.trim());
-    // Sensible default: the clinic socket server rides the same host on :3003.
-    // (Manual parse — RN's URL polyfill has no typed protocol/hostname.)
-    if (!socketUrl && value.trim()) {
-      const match = value.trim().match(/^(https?):\/\/([^/:]+)/);
-      if (match) {
-        const derived = `${match[1]}://${match[2]}:3003`;
-        setSocketUrl(derived);
-        await StorageService.saveHubSocketUrl(derived);
-      }
-    }
+    onSettingsChanged?.();
+  };
+
+  // Fill the socket URL from the server URL only once the user leaves the
+  // field (onBlur) — deriving it per-keystroke captured half-typed hosts.
+  // Default: same host, port 3003 (the clinic socket server default).
+  const handleServerUrlBlur = async () => {
+    if (socketUrl.trim()) return;
+    const match = serverUrl.trim().match(/^(https?):\/\/([^/:\s]+)/);
+    if (!match) return;
+    const derived = `${match[1]}://${match[2]}:3003`;
+    setSocketUrl(derived);
+    await StorageService.saveHubSocketUrl(derived);
     onSettingsChanged?.();
   };
 
@@ -260,6 +263,7 @@ export const ClinicHubSettingsSection: React.FC<ClinicHubSettingsSectionProps> =
             label="Server URL"
             value={serverUrl}
             onChangeText={handleServerUrlChange}
+            onBlur={handleServerUrlBlur}
             placeholder="e.g. https://portal.local"
             keyboardType="url"
             icon="server-network"

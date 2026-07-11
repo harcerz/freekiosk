@@ -1444,6 +1444,25 @@ class MainActivity : ReactActivity() {
       editor.putString("@kiosk_mqtt_device_name", it)
     }
 
+    // Dentrio clinic hub (watch relay) configuration
+    intent.getStringExtra("hub_enabled")?.let {
+      editor.putString("@kiosk_hub_enabled", it)
+    }
+    intent.getStringExtra("hub_server_url")?.let {
+      editor.putString("@kiosk_hub_server_url", it)
+    }
+    intent.getStringExtra("hub_socket_url")?.let {
+      editor.putString("@kiosk_hub_socket_url", it)
+    }
+    intent.getStringExtra("hub_device_id")?.let {
+      editor.putString("@kiosk_hub_device_id", it)
+    }
+    intent.getStringExtra("hub_device_token")?.let {
+      // Device token goes to secure Keychain, not AsyncStorage — same
+      // pending-key mechanism as mqtt_password (handled in KioskScreen).
+      editor.putString("@hub_token_pending", it)
+    }
+
     // Multi-app mode configuration
     intent.getStringExtra("external_app_mode")?.let {
       if (it == "single" || it == "multi") {

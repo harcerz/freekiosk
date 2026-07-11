@@ -10,7 +10,7 @@ import StatusBar from '../components/StatusBar';
 import MotionDetector from '../components/MotionDetector';
 import ExternalAppOverlay from '../components/ExternalAppOverlay';
 import { StorageService } from '../utils/storage';
-import { saveSecurePin, saveSecureMqttPassword, getSecureBasicAuthPassword } from '../utils/secureStorage';
+import { saveSecurePin, saveSecureMqttPassword, saveSecureHubToken, getSecureBasicAuthPassword } from '../utils/secureStorage';
 import KioskModule from '../utils/KioskModule';
 import AppLauncherModule from '../utils/AppLauncherModule';
 import OverlayServiceModule from '../utils/OverlayServiceModule';
@@ -1440,6 +1440,10 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
                 // MQTT password must be saved to Keychain (not AsyncStorage)
                 await saveSecureMqttPassword(value);
                 console.log('[KioskScreen] MQTT password saved to secure Keychain via pending ADB config');
+              } else if (key === '@hub_token_pending') {
+                // Clinic hub device token must be saved to Keychain
+                await saveSecureHubToken(value);
+                console.log('[KioskScreen] Hub device token saved to secure Keychain via pending ADB config');
               } else {
                 entries.push([key, value]);
               }
