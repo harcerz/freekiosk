@@ -1463,6 +1463,18 @@ class MainActivity : ReactActivity() {
       editor.putString("@hub_token_pending", it)
     }
 
+    // Embedded REST API (remote management) — ADB parity with QR pairing
+    intent.getStringExtra("rest_api_enabled")?.let {
+      editor.putString("@kiosk_rest_api_enabled", it)
+    }
+    intent.getStringExtra("rest_api_port")?.let {
+      editor.putString("@kiosk_rest_api_port", it)
+    }
+    intent.getStringExtra("rest_api_key")?.let {
+      // API key goes to secure Keychain via the pending-key mechanism.
+      editor.putString("@rest_key_pending", it)
+    }
+
     // Multi-app mode configuration
     intent.getStringExtra("external_app_mode")?.let {
       if (it == "single" || it == "multi") {

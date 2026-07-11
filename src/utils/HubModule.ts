@@ -20,6 +20,19 @@ export interface HubConfig {
   deviceId: string;
   deviceToken: string;
   pollIntervalSec?: number;
+  /**
+   * Embedded REST API coordinates — when enabled the native hub self-reports
+   * http://{localIp}:{port} (+ key) to the clinic (POST /api/tablet/report-status)
+   * so the admin panel's "Manage" works without typing IPs.
+   */
+  restApiEnabled?: boolean;
+  restApiPort?: number;
+  restApiKey?: string | null;
+}
+
+export interface HubSessionCookie {
+  name: string;
+  value: string;
 }
 
 export interface HubSummary {
@@ -95,7 +108,21 @@ class HubClientService {
     if (!serverUrl || !socketUrl || !deviceId || !deviceToken) {
       return null;
     }
-    return { serverUrl, socketUrl, deviceId, deviceToken };
+    // REST API coordinates ride along so the hub can self-report its address.
+    const [restApiEnabled, restApiPort, restApiKey] = await Promise.all([
+      StorageService.getRestApiEnabled(),
+      StorageService.getRestApiPort(),
+      StorageService.getRestApiKey(),
+    ]);
+    return {
+      serverUrl,
+      socketUrl,
+      deviceId,
+      deviceToken,
+      restApiEnabled,
+      restApiPort,
+      restApiKey: restApiKey || null,
+    };
   }
 
   async start(config: HubConfig): Promise<boolean> {
@@ -176,6 +203,46 @@ class HubClientService {
       return;
     }
     await HubModule.toggleReaction(messageId, emoji);
+  }
+
+  /**
+   * NextAuth session cookie from the native cookie jar (or null before
+   * login). Used to log the kiosk WebView in without exposing the
+   * deviceToken to JS — only the derived session cookie crosses the bridge.
+   */
+  async getSessionCookie(): Promise<HubSessionCookie | null> {
+    if (Platform.OS !== 'android' || !HubModule) {
+      return null;
+    }
+    return HubModule.getSessionCookie();
+  }
+
+  /** Watch battery relayed from the Wear OS Data Layer (Etap B2). */
+  async updateWatchBattery(level: number, charging: boolean): Promise<void> {
+    if (Platform.OS !== 'android' || !HubModule) {
+      return;
+    }
+    await HubModule.updateWatchBattery(level, charging);
+  }
+
+  /** Force a full self-report (endpoint + battery) — used after pairing. */
+  async reportStatusNow(): Promise<void> {
+    if (Platform.OS !== 'android' || !HubModule) {
+      return;
+    }
+    await HubModule.reportStatusNow();
+  }
+
+  /** Best-effort clear of the reported endpoint + battery (unpair). */
+  async reportUnpaired(): Promise<void> {
+    if (Platform.OS !== 'android' || !HubModule) {
+      return;
+    }
+    try {
+      await HubModule.reportUnpaired();
+    } catch {
+      // hub not running — nothing reported, nothing to clear
+    }
   }
 
   onConnectionChanged(callback: (connected: boolean) => void): () => void {

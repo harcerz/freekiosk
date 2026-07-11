@@ -6,7 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, PermissionsAndroid, Alert } from 'react-native';
 import RNFS from 'react-native-fs';
-import { hasSecurePin, getSecureApiKey, saveSecureApiKey, getSecureMqttPassword, saveSecureMqttPassword } from './secureStorage';
+import { hasSecurePin, getSecureApiKey, saveSecureApiKey, getSecureMqttPassword, saveSecureMqttPassword, getSecureHubToken, saveSecureHubToken } from './secureStorage';
 
 // All storage keys to backup
 const BACKUP_KEYS = [
@@ -123,6 +123,13 @@ const BACKUP_KEYS = [
   '@kiosk_beta_updates_enabled',
   // Managed Apps (Multi-App mode, accessibility, keep-alive)
   '@kiosk_managed_apps',
+  // Dentrio clinic hub (one-scan pairing)
+  '@kiosk_hub_enabled',
+  '@kiosk_hub_server_url',
+  '@kiosk_hub_socket_url',
+  '@kiosk_hub_device_id',
+  '@kiosk_paired_label',
+  // Note: hub device token is handled separately via Keychain (secure storage)
   // Note: MQTT password is handled separately via Keychain (secure storage)
   // Legacy keys
   '@screensaver_delay',
@@ -240,6 +247,13 @@ export async function buildBackupJson(): Promise<{ success: boolean; json?: stri
       if (mqttPassword) settings['@kiosk_mqtt_password'] = mqttPassword;
     } catch (e) {
       console.warn('Failed to read MQTT password from secure storage:', e);
+    }
+
+    try {
+      const hubToken = await getSecureHubToken();
+      if (hubToken) settings['@kiosk_hub_device_token'] = hubToken;
+    } catch (e) {
+      console.warn('Failed to read hub token from secure storage:', e);
     }
 
     const hasPinConfigured = await hasSecurePin();
@@ -386,6 +400,9 @@ export async function importBackup(filePath: string): Promise<{ success: boolean
           } else if (key === '@kiosk_mqtt_password') {
             await saveSecureMqttPassword(value);
             console.log('[BackupService] MQTT password imported to secure storage');
+          } else if (key === '@kiosk_hub_device_token') {
+            await saveSecureHubToken(value);
+            console.log('[BackupService] Hub device token imported to secure storage');
           } else {
             await AsyncStorage.setItem(key, value);
           }
@@ -440,6 +457,9 @@ export async function importBackupFromContent(jsonContent: string, fileName?: st
           } else if (key === '@kiosk_mqtt_password') {
             await saveSecureMqttPassword(value);
             console.log('[BackupService] MQTT password imported to secure storage');
+          } else if (key === '@kiosk_hub_device_token') {
+            await saveSecureHubToken(value);
+            console.log('[BackupService] Hub device token imported to secure storage');
           } else {
             await AsyncStorage.setItem(key, value);
           }

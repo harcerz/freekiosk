@@ -844,26 +844,24 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     navigation.navigate('Pin');
   };
 
-  const handleOpenGitHub = (): void => {
-    Linking.openURL('https://github.com/rushb-fr/freekiosk').catch(err =>
-      console.error('[FreeKiosk] Failed to open GitHub URL:', err)
-    );
+  const handleNavigateToPairing = (): void => {
+    navigation.navigate('Pairing');
   };
 
   if (!url) {
     return (
       <View style={styles.welcomeContainer}>
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
           <Animated.View style={[styles.welcomeContent, { opacity: fadeAnim }]}>
-              
+
               {/* Logo / Icon */}
             <View style={styles.logoContainer}>
               <View style={styles.logoCircle}>
-                <Image 
-                  source={require('../assets/images/logo_circle.png')} 
+                <Image
+                  source={require('../assets/images/dentrio_logo.png')}
                   style={styles.logoImage}
                   resizeMode="contain"
                 />
@@ -871,60 +869,36 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
             </View>
 
             {/* Title */}
-            <Text style={styles.welcomeTitle}>FreeKiosk</Text>
+            <Text style={styles.welcomeTitle}>DenTRIO</Text>
             <Text style={styles.welcomeSubtitle}>
-              Professional Kiosk Application
+              Tablet gabinetowy kliniki
             </Text>
 
-            {/* Features List */}
-            <View style={styles.featuresList}>
-              <FeatureItem
-                icon="🔒"
-                text="Secure kiosk mode"
-              />
-              <FeatureItem
-                icon="⚡"
-                text="Optimal performance"
-              />
-              <FeatureItem
-                icon="🎯"
-                text="100% free & open source"
-              />
-            </View>
+            {/* Action Buttons */}
+            <TouchableOpacity
+              style={styles.setupButton}
+              onPress={handleNavigateToPairing}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.setupButtonText}>
+                🦷 Sparuj z kliniką (skan QR)
+              </Text>
+            </TouchableOpacity>
 
-            {/* Action Button */}
             <TouchableOpacity
               style={styles.setupButton}
               onPress={handleNavigateToSettings}
               activeOpacity={0.8}
             >
               <Text style={styles.setupButtonText}>
-                🚀 Start Configuration
+                ⚙️ Konfiguracja
               </Text>
             </TouchableOpacity>
-
-            {/* GitHub Support Button */}
-            <TouchableOpacity
-              style={styles.githubButton}
-              onPress={handleOpenGitHub}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.githubButtonText}>
-                ⭐ Support us on GitHub
-              </Text>
-            </TouchableOpacity>
-
-            {/* Hint */}
-            <View style={styles.hintContainer}>
-              <Text style={styles.hintText}>
-                💡 Tip: Tap 5× anywhere on the screen to access settings
-              </Text>
-            </View>
 
             {/* Footer */}
-            <Text style={styles.footerText}>
-              {appVersion ? `Version ${appVersion} • by Rushb` : 'by Rushb'}
-            </Text>
+            {appVersion ? (
+              <Text style={styles.footerText}>DenTRIO {appVersion}</Text>
+            ) : null}
           </Animated.View>
         </ScrollView>
       </View>
@@ -1239,14 +1213,6 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     </View>
   );
 });
-
-
-const FeatureItem: React.FC<{ icon: string; text: string }> = ({ icon, text }) => (
-  <View style={styles.featureItem}>
-    <Text style={styles.featureIcon}>{icon}</Text>
-    <Text style={styles.featureText}>{text}</Text>
-  </View>
-);
 
 
 const styles = StyleSheet.create({

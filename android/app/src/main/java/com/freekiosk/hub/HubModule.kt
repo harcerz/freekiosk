@@ -80,7 +80,14 @@ class HubModule(private val reactContext: ReactApplicationContext) :
                     pollIntervalSec = if (configMap.hasKey("pollIntervalSec")) {
                         configMap.getInt("pollIntervalSec").toLong()
                     } else 60L,
+                    restApiEnabled = configMap.hasKey("restApiEnabled") &&
+                        configMap.getBoolean("restApiEnabled"),
+                    restApiPort = if (configMap.hasKey("restApiPort")) {
+                        configMap.getInt("restApiPort")
+                    } else 8080,
+                    restApiKey = configMap.getString("restApiKey"),
                 ),
+                reactContext.applicationContext,
             )
 
             hubClient.onConnectionChanged = { connected ->
@@ -173,6 +180,48 @@ class HubModule(private val reactContext: ReactApplicationContext) :
                 promise.reject("SEND_ERROR", e.message)
             }
         }
+    }
+
+    /**
+     * NextAuth session cookie ({name, value} or null) for the WebView
+     * transplant — JS sets it via CookieManager so the kiosk WebView is
+     * logged in without ever seeing the deviceToken.
+     */
+    @ReactMethod
+    fun getSessionCookie(promise: Promise) {
+        val cookie = client?.getSessionCookie()
+        if (cookie == null) {
+            promise.resolve(null)
+            return
+        }
+        promise.resolve(Arguments.createMap().apply {
+            putString("name", cookie.first)
+            putString("value", cookie.second)
+        })
+    }
+
+    /** Watch battery relayed from the Wear OS Data Layer (Etap B2). */
+    @ReactMethod
+    fun updateWatchBattery(level: Int, charging: Boolean, promise: Promise) {
+        val hubClient = client ?: return promise.reject("NOT_RUNNING", "Hub is not running")
+        hubClient.updateWatchBattery(level, charging)
+        promise.resolve(true)
+    }
+
+    /** Force a full self-report (endpoint + battery) — used after pairing. */
+    @ReactMethod
+    fun reportStatusNow(promise: Promise) {
+        val hubClient = client ?: return promise.reject("NOT_RUNNING", "Hub is not running")
+        hubClient.reportStatusNow()
+        promise.resolve(true)
+    }
+
+    /** Best-effort clear of the reported endpoint + battery (unpair). */
+    @ReactMethod
+    fun reportUnpaired(promise: Promise) {
+        val hubClient = client ?: return promise.resolve(false)
+        hubClient.reportUnpaired()
+        promise.resolve(true)
     }
 
     @ReactMethod

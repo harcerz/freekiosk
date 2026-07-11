@@ -146,6 +146,9 @@ const KEYS = {
   HUB_SERVER_URL: '@kiosk_hub_server_url',
   HUB_SOCKET_URL: '@kiosk_hub_socket_url',
   HUB_DEVICE_ID: '@kiosk_hub_device_id',
+  // One-scan clinic pairing (PairingService)
+  PAIRED_LABEL: '@kiosk_paired_label',
+  PAIRING_PENDING: '@kiosk_pairing_pending',
 
   // Custom update server: when set, "Check for Updates" queries this JSON
   // manifest URL instead of GitHub Releases (fleet-managed deployments).
@@ -2543,6 +2546,25 @@ export const StorageService = {
       return value || '';
     } catch (error) {
       console.error('Error getting hub device ID:', error);
+      return '';
+    }
+  },
+
+  /** Human label of the paired clinic tablet (device name from the panel). */
+  savePairedLabel: async (label: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.PAIRED_LABEL, label);
+    } catch (error) {
+      console.error('Error saving paired label:', error);
+    }
+  },
+
+  getPairedLabel: async (): Promise<string> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.PAIRED_LABEL);
+      return value || '';
+    } catch (error) {
+      console.error('Error getting paired label:', error);
       return '';
     }
   },

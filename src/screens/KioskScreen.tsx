@@ -19,6 +19,10 @@ import AutoBrightnessModule from '../utils/AutoBrightnessModule';
 import { ApiService } from '../utils/ApiService';
 import { mqttClient } from '../utils/MqttModule';
 import { hubClient } from '../utils/HubModule';
+import {
+  resumePendingPairing,
+  transplantSessionCookie,
+} from '../utils/PairingService';
 import DeviceControlService from '../services/DeviceControlService';
 import { ScheduledEvent, getActiveEvent } from '../types/planner';
 import { DashboardTile } from '../types/dashboard';
@@ -747,8 +751,29 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         console.log('ApiService: MQTT auto-start skipped:', (e as Error).message);
       }
 
+      // Recover an interrupted one-scan pairing (secrets are already saved;
+      // this re-applies the non-secret config without a new QR).
+      await resumePendingPairing();
+
       // Auto-start the Dentrio clinic hub (watch relay) if enabled
       await hubClient.autoStart();
+
+      // Refresh the WebView session cookie from the hub's tablet session so
+      // the clinic tablet mode is logged in without a manual QR login.
+      const hubServerUrl = await StorageService.getHubServerUrl();
+      if (hubServerUrl && (await hubClient.isRunning())) {
+        transplantSessionCookie(hubServerUrl)
+          .then(ok => {
+            // The WebView may have loaded (and bounced to the login page)
+            // before the cookie landed — one reload applies the session.
+            if (ok) {
+              webViewRef.current?.reload();
+            }
+          })
+          .catch(e =>
+            console.warn('[KioskScreen] Cookie transplant failed:', e),
+          );
+      }
     };
 
     initApiService();
@@ -1444,6 +1469,10 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
                 // Clinic hub device token must be saved to Keychain
                 await saveSecureHubToken(value);
                 console.log('[KioskScreen] Hub device token saved to secure Keychain via pending ADB config');
+              } else if (key === '@rest_key_pending') {
+                // Embedded REST API key must be saved to Keychain
+                await StorageService.saveRestApiKey(value);
+                console.log('[KioskScreen] REST API key saved to secure Keychain via pending ADB config');
               } else {
                 entries.push([key, value]);
               }

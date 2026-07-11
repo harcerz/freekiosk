@@ -14,7 +14,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import SettingsSection from './settings/SettingsSection';
 import SettingsSwitch from './settings/SettingsSwitch';
 import SettingsInput from './settings/SettingsInput';
@@ -22,6 +25,8 @@ import Icon from './Icon';
 import { StorageService } from '../utils/storage';
 import { hubClient, type HubSummary } from '../utils/HubModule';
 import { getSecureHubToken, saveSecureHubToken } from '../utils/secureStorage';
+import { unpair } from '../utils/PairingService';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 
 interface ClinicHubSettingsSectionProps {
   onSettingsChanged?: () => void;
@@ -30,11 +35,15 @@ interface ClinicHubSettingsSectionProps {
 export const ClinicHubSettingsSection: React.FC<ClinicHubSettingsSectionProps> = ({
   onSettingsChanged,
 }) => {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [hubEnabled, setHubEnabled] = useState(false);
   const [serverUrl, setServerUrl] = useState('');
   const [socketUrl, setSocketUrl] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [deviceToken, setDeviceToken] = useState('');
+  const [pairedLabel, setPairedLabel] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -92,18 +101,50 @@ export const ClinicHubSettingsSection: React.FC<ClinicHubSettingsSectionProps> =
   }, []);
 
   const loadSettings = async () => {
-    const [enabled, server, socket, id, token] = await Promise.all([
+    const [enabled, server, socket, id, token, label] = await Promise.all([
       StorageService.getHubEnabled(),
       StorageService.getHubServerUrl(),
       StorageService.getHubSocketUrl(),
       StorageService.getHubDeviceId(),
       getSecureHubToken(),
+      StorageService.getPairedLabel(),
     ]);
     setHubEnabled(enabled);
     setServerUrl(server);
     setSocketUrl(socket);
     setDeviceId(id);
     setDeviceToken(token);
+    setPairedLabel(label);
+  };
+
+  const handleUnpair = () => {
+    Alert.alert(
+      'Unpair from clinic',
+      `This clears the clinic configuration of "${pairedLabel || 'this tablet'}" (login, hub, remote management). Re-pair by scanning a fresh QR from the admin panel.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unpair',
+          style: 'destructive',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              await unpair();
+              await loadSettings();
+              setIsConnected(false);
+              setRoomName(null);
+              setConnectionError(null);
+              onSettingsChanged?.();
+            } catch (error: any) {
+              console.error('[ClinicHub] Unpair failed:', error);
+              setConnectionError(error?.message ?? 'Unpair failed');
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleConnect = async () => {
@@ -211,6 +252,32 @@ export const ClinicHubSettingsSection: React.FC<ClinicHubSettingsSectionProps> =
 
   return (
     <SettingsSection title="Clinic Hub (Dentrio)" icon="cellphone-link">
+      {/* One-scan pairing status / entry point */}
+      {pairedLabel ? (
+        <View style={styles.pairedRow}>
+          <Icon name="check-circle" size={18} color="#4CAF50" />
+          <Text style={styles.pairedText}>
+            Paired: {pairedLabel}
+            {isConnected && roomName ? ` — ${roomName}` : ''}
+          </Text>
+          <TouchableOpacity
+            style={styles.unpairButton}
+            onPress={handleUnpair}
+            disabled={isLoading}
+          >
+            <Text style={styles.unpairButtonText}>Unpair</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.pairButton}
+          onPress={() => navigation.navigate('Pairing')}
+        >
+          <Icon name="camera" size={16} color="#FFF" />
+          <Text style={styles.pairButtonText}>Pair with clinic (scan QR)</Text>
+        </TouchableOpacity>
+      )}
+
       <SettingsSwitch
         label="Enable Clinic Hub"
         value={hubEnabled}
@@ -259,49 +326,68 @@ export const ClinicHubSettingsSection: React.FC<ClinicHubSettingsSectionProps> =
             )}
           </View>
 
-          <SettingsInput
-            label="Server URL"
-            value={serverUrl}
-            onChangeText={handleServerUrlChange}
-            onBlur={handleServerUrlBlur}
-            placeholder="e.g. https://portal.local"
-            keyboardType="url"
-            icon="server-network"
-            hint="Clinic system base URL (required)"
-          />
+          {/* Manual connection settings — normally filled by QR pairing. */}
+          <TouchableOpacity
+            style={styles.advancedToggle}
+            onPress={() => setShowAdvanced((value) => !value)}
+          >
+            <Icon
+              name={showAdvanced ? 'chevron-down' : 'chevron-right'}
+              size={18}
+              color="#666"
+            />
+            <Text style={styles.advancedToggleText}>
+              Advanced — manual connection settings
+            </Text>
+          </TouchableOpacity>
 
-          <SettingsInput
-            label="Socket URL"
-            value={socketUrl}
-            onChangeText={handleSocketUrlChange}
-            placeholder="e.g. https://portal.local:3003"
-            keyboardType="url"
-            icon="lan-connect"
-            hint="Clinic realtime (Socket.IO) server — auto-filled from the server URL"
-          />
+          {showAdvanced && (
+            <>
+              <SettingsInput
+                label="Server URL"
+                value={serverUrl}
+                onChangeText={handleServerUrlChange}
+                onBlur={handleServerUrlBlur}
+                placeholder="e.g. https://portal.local"
+                keyboardType="url"
+                icon="server-network"
+                hint="Clinic system base URL (required)"
+              />
 
-          <SettingsInput
-            label="Device ID"
-            value={deviceId}
-            onChangeText={handleDeviceIdChange}
-            placeholder="Tablet ID from the clinic admin panel"
-            icon="tablet"
-            hint="Clinic admin panel → Settings → Tablets"
-          />
+              <SettingsInput
+                label="Socket URL"
+                value={socketUrl}
+                onChangeText={handleSocketUrlChange}
+                placeholder="e.g. https://portal.local:3003"
+                keyboardType="url"
+                icon="lan-connect"
+                hint="Clinic realtime (Socket.IO) server — auto-filled from the server URL"
+              />
 
-          <SettingsInput
-            label="Device Token"
-            value={deviceToken}
-            onChangeText={handleDeviceTokenChange}
-            placeholder="Device token from the clinic admin panel"
-            secureTextEntry
-            icon="lock"
-            hint={
-              deviceToken.length > 0
-                ? 'Token is saved securely. Leave untouched to keep the current token.'
-                : undefined
-            }
-          />
+              <SettingsInput
+                label="Device ID"
+                value={deviceId}
+                onChangeText={handleDeviceIdChange}
+                placeholder="Tablet ID from the clinic admin panel"
+                icon="tablet"
+                hint="Clinic admin panel → Settings → Tablets"
+              />
+
+              <SettingsInput
+                label="Device Token"
+                value={deviceToken}
+                onChangeText={handleDeviceTokenChange}
+                placeholder="Device token from the clinic admin panel"
+                secureTextEntry
+                icon="lock"
+                hint={
+                  deviceToken.length > 0
+                    ? 'Token is saved securely. Leave untouched to keep the current token.'
+                    : undefined
+                }
+              />
+            </>
+          )}
 
           <View style={styles.hintContainer}>
             <Icon name="information-outline" size={20} color="#41BDF5" />
@@ -318,6 +404,59 @@ export const ClinicHubSettingsSection: React.FC<ClinicHubSettingsSectionProps> =
 };
 
 const styles = StyleSheet.create({
+  pairedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  pairedText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#2E7D32',
+  },
+  unpairButton: {
+    backgroundColor: '#F44336',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  unpairButtonText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pairButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1976D2',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  pairButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  advancedToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  advancedToggleText: {
+    marginLeft: 4,
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
   statusContainer: {
     backgroundColor: '#F8F9FA',
     borderRadius: 8,
