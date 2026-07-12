@@ -135,9 +135,9 @@ private fun WatchRoot() {
                 }
                 composable("chat") {
                     ChatScreen(
-                        onToggleReaction = { messageId ->
+                        onToggleReaction = { messageId, emoji ->
                             sendGuarded {
-                                WatchComm.sendReaction(context, messageId, "👍")
+                                WatchComm.sendReaction(context, messageId, emoji)
                             }
                         },
                         onQuickReply = { text ->

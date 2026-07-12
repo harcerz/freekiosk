@@ -22,8 +22,8 @@ class WatchActionReceiver : BroadcastReceiver() {
         const val ACTION_REACT = "com.freekiosk.wear.ACTION_REACT"
         const val ACTION_QUICK_REPLY = "com.freekiosk.wear.ACTION_QUICK_REPLY"
         const val EXTRA_MESSAGE_ID = "messageId"
+        const val EXTRA_EMOJI = "emoji"
         const val EXTRA_CONTENT = "content"
-        private const val REACTION_EMOJI = "👍"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -34,8 +34,9 @@ class WatchActionReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ACTION_REACT -> {
                         val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID)
+                        val emoji = intent.getStringExtra(EXTRA_EMOJI) ?: "👍"
                         if (!messageId.isNullOrBlank()) {
-                            WatchComm.sendReaction(appContext, messageId, REACTION_EMOJI)
+                            WatchComm.sendReaction(appContext, messageId, emoji)
                         }
                     }
 

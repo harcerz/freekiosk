@@ -58,30 +58,27 @@ object WatchNotifications {
 
         if (message.id.isNotBlank() && !message.isSystem) {
             builder.addAction(
-                0,
-                context.getString(R.string.notif_reaction_action),
+                0, "👍",
                 actionIntent(context, WatchActionReceiver.ACTION_REACT, 1) {
                     putExtra(WatchActionReceiver.EXTRA_MESSAGE_ID, message.id)
+                    putExtra(WatchActionReceiver.EXTRA_EMOJI, "👍")
+                },
+            )
+            builder.addAction(
+                0, "👎",
+                actionIntent(context, WatchActionReceiver.ACTION_REACT, 2) {
+                    putExtra(WatchActionReceiver.EXTRA_MESSAGE_ID, message.id)
+                    putExtra(WatchActionReceiver.EXTRA_EMOJI, "👎")
                 },
             )
         }
         builder.addAction(
             0,
             context.getString(R.string.quick_reply_1),
-            actionIntent(context, WatchActionReceiver.ACTION_QUICK_REPLY, 2) {
-                putExtra(
-                    WatchActionReceiver.EXTRA_CONTENT,
-                    context.getString(R.string.quick_reply_1),
-                )
-            },
-        )
-        builder.addAction(
-            0,
-            context.getString(R.string.quick_reply_2),
             actionIntent(context, WatchActionReceiver.ACTION_QUICK_REPLY, 3) {
                 putExtra(
                     WatchActionReceiver.EXTRA_CONTENT,
-                    context.getString(R.string.quick_reply_2),
+                    context.getString(R.string.quick_reply_1),
                 )
             },
         )

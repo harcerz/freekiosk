@@ -19,7 +19,7 @@
     <!-- Quick replies (also used as notification actions) -->
     <string name="quick_reply_1">Już idę</string>
     <string name="quick_reply_2">Za 5 minut</string>
-    <string name="quick_reply_3">OK</string>
+    <string name="quick_reply_no">Nie mogę</string>
 
     <!-- Help call -->
     <string name="help_call_confirm_title">Wezwać pomoc?</string>
@@ -32,7 +32,6 @@
     <!-- Notifications -->
     <string name="channel_chat">Czat gabinetu</string>
     <string name="channel_alerts">Alerty gabinetu</string>
-    <string name="notif_reaction_action">👍</string>
     <string name="overrun_alert_title">Pacjent czeka!</string>
     <string name="overrun_alert_body">%1$s czeka %2$d min, wizyta przekroczona o %3$d min</string>
 </resources>

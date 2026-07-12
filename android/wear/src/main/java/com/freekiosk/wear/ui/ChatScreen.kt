@@ -1,9 +1,14 @@
 package com.freekiosk.wear.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -27,15 +32,19 @@ import com.freekiosk.wear.R
 import com.freekiosk.wear.data.WatchStateHolder
 import com.freekiosk.wear.model.WatchChatMessage
 
-private const val REACTION_EMOJI = "👍"
+/** Reactions offered on the wrist: agree / disagree. */
+private val WATCH_REACTIONS = listOf("👍", "👎")
+
+private val AccentBlue = Color(0xFF41BDF5)
 
 /**
- * Second-level screen: the room channel. Newest messages first, tap a bubble
- * to toggle 👍, quick replies at the end of the list. Swipe right to go back.
+ * Second-level screen: the room channel. Newest messages first, each with an
+ * explicit 👍 / 👎 toggle row, quick replies at the end. Swipe right to
+ * go back.
  */
 @Composable
 fun ChatScreen(
-    onToggleReaction: (messageId: String) -> Unit,
+    onToggleReaction: (messageId: String, emoji: String) -> Unit,
     onQuickReply: (text: String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -52,7 +61,7 @@ fun ChatScreen(
                 Text(
                     text = context.getString(R.string.chat_section),
                     style = MaterialTheme.typography.caption1,
-                    color = Color(0xFF41BDF5),
+                    color = AccentBlue,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -74,11 +83,7 @@ fun ChatScreen(
                 }
             } else {
                 items(messages, key = { it.id.ifBlank { it.hashCode().toString() } }) { message ->
-                    MessageBubble(message) {
-                        if (!message.isSystem && message.id.isNotBlank()) {
-                            onToggleReaction(message.id)
-                        }
-                    }
+                    MessageBubble(message, onToggleReaction)
                 }
             }
 
@@ -94,18 +99,27 @@ fun ChatScreen(
                     onClick = onQuickReply,
                 )
             }
+            item {
+                QuickReplyChip(
+                    text = context.getString(R.string.quick_reply_no),
+                    onClick = onQuickReply,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun MessageBubble(message: WatchChatMessage, onTap: () -> Unit) {
-    Card(onClick = onTap, modifier = Modifier.fillMaxWidth()) {
+private fun MessageBubble(
+    message: WatchChatMessage,
+    onToggleReaction: (messageId: String, emoji: String) -> Unit,
+) {
+    Card(onClick = {}, modifier = Modifier.fillMaxWidth()) {
         Column {
             Text(
                 text = message.senderName,
                 style = MaterialTheme.typography.caption2,
-                color = Color(0xFF41BDF5),
+                color = AccentBlue,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -115,18 +129,55 @@ private fun MessageBubble(message: WatchChatMessage, onTap: () -> Unit) {
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
             )
-            val mine = REACTION_EMOJI in message.myReactions
-            if (message.reactions.isNotEmpty() || mine) {
+
+            // Other reactions (beyond the wrist pair) as plain text.
+            val other = message.reactions.filter { (emoji, _) -> emoji !in WATCH_REACTIONS }
+            if (other.isNotEmpty()) {
                 Text(
-                    text = message.reactions
-                        .joinToString(" ") { (emoji, count) -> "$emoji$count" }
-                        .ifBlank { REACTION_EMOJI },
-                    style = MaterialTheme.typography.caption1,
-                    color = if (mine) Color(0xFF41BDF5) else Color.Gray,
+                    text = other.joinToString(" ") { (emoji, count) -> "$emoji$count" },
+                    style = MaterialTheme.typography.caption2,
+                    color = Color.Gray,
                 )
+            }
+
+            if (!message.isSystem && message.id.isNotBlank()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 4.dp),
+                ) {
+                    WATCH_REACTIONS.forEach { emoji ->
+                        ReactionToggle(
+                            emoji = emoji,
+                            count = message.reactions.firstOrNull { it.first == emoji }?.second ?: 0,
+                            mine = emoji in message.myReactions,
+                            onClick = { onToggleReaction(message.id, emoji) },
+                        )
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun ReactionToggle(
+    emoji: String,
+    count: Int,
+    mine: Boolean,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = if (count > 0) "$emoji $count" else emoji,
+        style = MaterialTheme.typography.caption1,
+        color = if (mine) Color.Black else Color.White,
+        modifier = Modifier
+            .background(
+                if (mine) AccentBlue else Color.White.copy(alpha = 0.12f),
+                RoundedCornerShape(12.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
