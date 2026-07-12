@@ -44,6 +44,7 @@ class HubModule(private val reactContext: ReactApplicationContext) :
     }
 
     private var client: ClinicHubClient? = null
+    private var wearRelay: WearRelay? = null
 
     override fun getName(): String = NAME
 
@@ -90,6 +91,10 @@ class HubModule(private val reactContext: ReactApplicationContext) :
                 reactContext.applicationContext,
             )
 
+            // Wear OS relay: mirrors the summary to the watch and executes
+            // watch actions through the hub (Data Layer contract in WearRelay).
+            val relay = WearRelay(reactContext.applicationContext, hubClient)
+
             hubClient.onConnectionChanged = { connected ->
                 sendEvent("onHubConnectionChanged", Arguments.createMap().apply {
                     putBoolean("connected", connected)
@@ -104,9 +109,17 @@ class HubModule(private val reactContext: ReactApplicationContext) :
                 sendEvent("onHubSummaryChanged", Arguments.createMap().apply {
                     putString("summary", summary.toString())
                 })
+                relay.pushSummary(summary)
+            }
+            hubClient.onChatEvent = { type, payload ->
+                if (type == "message-new") {
+                    relay.pushChatMessage(payload)
+                }
             }
 
             client = hubClient
+            wearRelay = relay
+            relay.start()
             hubClient.start()
             Log.i(TAG, "Hub client started for $serverUrl (device $deviceId)")
             promise.resolve(true)
@@ -119,6 +132,8 @@ class HubModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stopHub(promise: Promise) {
         try {
+            wearRelay?.stop()
+            wearRelay = null
             client?.stop()
             client = null
             Log.i(TAG, "Hub client stopped")
@@ -243,6 +258,8 @@ class HubModule(private val reactContext: ReactApplicationContext) :
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
         try {
+            wearRelay?.stop()
+            wearRelay = null
             client?.stop()
             client = null
             instance = null

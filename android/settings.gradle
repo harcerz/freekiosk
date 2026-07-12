@@ -3,4 +3,6 @@ plugins { id("com.facebook.react.settings") }
 extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
 rootProject.name = 'FreeKiosk'
 include ':app'
+// DenTRIO watch companion (Wear OS, pure Kotlin/Compose — no RN)
+include ':wear'
 includeBuild('../node_modules/@react-native/gradle-plugin')

@@ -49,9 +49,14 @@ i `docs/processes/messenger/README.md` (sekcja „Kompan-zegarek gabinetu").
   `MqttSettingsSection.tsx` — status na żywo, test połączenia).
 - Keep-alive: FGS `START_STICKY` + hak `checkAndReconnect()` w `OverlayService`
   (obok MQTT) + start z `BootReceiver` + autostart w `KioskScreen` useEffect (~690-775).
-- Data Layer paths: `/watch/summary` (DataItem, pełny stan), `/watch/event/chat`
-  (Message, „nowa wiadomość" — wake), akcje z zegarka: `/watch/action/reaction`
-  `{messageId, emoji}`, `/watch/action/quick-reply {content}`, `/watch/action/help-call`.
+- Data Layer paths (ZAIMPLEMENTOWANE — patrz `hub/WearRelay.kt` i moduł `:wear`):
+  tablet→zegarek: `/watch/summary` (DataItem urgent, pełny JSON summary + `updatedAt`;
+  push przy zmianie + keepalive 5 min), `/watch/chat-message` (Message, „nowa
+  wiadomość" → powiadomienie), `/watch/action-result` (Message, `{action, ok,
+  message?}` — feedback akcji, np. cooldown 🆘). Zegarek→tablet:
+  `/watch/action/reaction {messageId, emoji}`, `/watch/action/quick-reply {content}`,
+  `/watch/action/help-call {note?}`, `/watch/battery {level, charging}` (tablet
+  forwarduje do `POST /api/tablet/report-status`), `/watch/summary-request {}`.
 
 ## Etapy
 
@@ -74,19 +79,30 @@ i `docs/processes/messenger/README.md` (sekcja „Kompan-zegarek gabinetu").
    Weryfikacja B1: emulator/tablet → ustawienia → połączono; logcat pokazuje summary
    i reakcje na eventy socketa (dev stoma).
 
-**B2 — relay Data Layer (:app):**
-`WearRelay.kt` — `DataClient.putDataItem("/watch/summary", …)` po każdej zmianie stanu,
-`MessageClient` na eventy chat/help; `MessageClient.OnMessageReceivedListener` na
-`/watch/action/*` → wywołania `ClinicHubClient` → odpowiedź statusem. `CapabilityClient`
-do wykrywania obecności zegarka (status „zegarek połączony" w ustawieniach).
+**B2 — relay Data Layer (:app) — ZAIMPLEMENTOWANE (2026-07-12):**
+`hub/WearRelay.kt` — DataItem `/watch/summary` po każdej zmianie summary (dedup po
+treści + keepalive 5 min, `setUrgent`), broadcast `/watch/chat-message` na `message-new`,
+`MessageClient.OnMessageReceivedListener` na `/watch/action/*` + `/watch/battery` +
+`/watch/summary-request` → wywołania `ClinicHubClient` na jego executorze → odpowiedź
+`/watch/action-result`. Relay tworzony/wyłączany w `HubModule` razem z klientem huba.
+(CapabilityClient „zegarek połączony" w ustawieniach — do zrobienia później.)
 
-**C — moduł `:wear` (Compose for Wear):**
-`include ':wear'` w `settings.gradle` (poza autolinkingiem RN), `wearApp project(':wear')`
-w `:app` (embedded delivery), ten sam `applicationId com.freekiosk` i klucz podpisu.
-Ekran główny (teraz/następny, czerwone pulsujące pole gdy `isWaiting` — konwencja
-webowa), lista ostatnich wiadomości z reakcją 👍 i szybkimi odpowiedziami,
-powiadomienia lokalne z akcjami, wibracja gdy `minutesOverrun>0 && isWaiting`,
-przycisk 🆘 (long-press), Ongoing Activity ze stanem połączenia.
+**C — moduł `:wear` (Compose for Wear) — ZAIMPLEMENTOWANE MVP (2026-07-12):**
+`include ':wear'` w `settings.gradle` (czysty Kotlin/Compose, poza autolinkingiem RN);
+**ten sam `applicationId com.freekiosk` i klucz podpisu (debug.keystore z `:app`)** —
+warunek dostarczania Data Layer; APK sideloadowany na zegarek przez adb (bez
+`wearApp` embedding). Kod: `model/WatchSummary.kt` (defensywny parser),
+`data/WatchStateHolder.kt` (StateFlow współdzielony serwis↔UI + seed z persystowanego
+DataItem), `comm/WatchComm.kt` (wysyłki + raport baterii zegarka przy zmianie/15 min,
+piggyback na odbiorze summary), `service/WatchDataListenerService.kt`
+(WearableListenerService: summary→stan, chat→powiadomienie, wynik akcji→flow;
+alert wibracyjny gdy `minutesOverrun>0 && next.isWaiting`, raz na wizytę),
+`service/WatchActionReceiver.kt` (akcje powiadomień), `notif/WatchNotifications.kt`
+(czat: 👍 + „Już idę"/„Za 5 minut"; kanał alertów z wibracją), `MainActivity.kt`
+(Compose: gabinet + teraz/następny, pulsujące czerwone pole „W poczekalni X min",
+czat z toggle 👍, szybkie odpowiedzi, 🆘 z dialogiem potwierdzenia, banner wyników,
+znacznik nieświeżych danych >3 min). Do zrobienia później: Tile, Ongoing Activity,
+CapabilityClient, pełnoekranowy alarm zamiast powiadomienia.
 
 **Integracja sprzętowa (dawny SPIKE 0, na końcu):** parowanie TicWatch Pro 5 z tabletem
 (Mobvoi Health + Google Play na tablecie), test zasięgu BT w gabinecie, bateria na zmianie.

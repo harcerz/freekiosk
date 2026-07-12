@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DenTRIO</string>
+
+    <!-- Main screen -->
+    <string name="waiting_for_data">Czekam na dane z tabletu…</string>
+    <string name="no_room">Tablet bez gabinetu</string>
+    <string name="stale_data">Dane nieaktualne</string>
+    <string name="now_label">Teraz</string>
+    <string name="next_label">Następny</string>
+    <string name="no_current_visit">Brak trwającej wizyty</string>
+    <string name="no_next_appointment">Brak kolejnej wizyty</string>
+    <string name="overrun_format">+%1$d min po czasie</string>
+    <string name="waiting_badge">W poczekalni</string>
+    <string name="waiting_badge_minutes">W poczekalni %1$d min</string>
+    <string name="chat_section">Czat gabinetu</string>
+    <string name="no_messages">Brak wiadomości</string>
+
+    <!-- Quick replies (also used as notification actions) -->
+    <string name="quick_reply_1">Już idę</string>
+    <string name="quick_reply_2">Za 5 minut</string>
+    <string name="quick_reply_3">OK</string>
+
+    <!-- Help call -->
+    <string name="help_call_button">🆘 Wezwij pomoc</string>
+    <string name="help_call_confirm_title">Wezwać pomoc?</string>
+    <string name="help_call_confirm_yes">Wezwij</string>
+    <string name="help_call_confirm_no">Anuluj</string>
+    <string name="help_call_sent">Wezwano pomoc</string>
+    <string name="help_call_cooldown">Już wezwano — odczekaj chwilę</string>
+    <string name="action_failed">Nie udało się — spróbuj ponownie</string>
+    <string name="reply_sent">Wysłano</string>
+
+    <!-- Notifications -->
+    <string name="channel_chat">Czat gabinetu</string>
+    <string name="channel_alerts">Alerty gabinetu</string>
+    <string name="notif_reaction_action">👍</string>
+    <string name="overrun_alert_title">Pacjent czeka!</string>
+    <string name="overrun_alert_body">%1$s czeka %2$d min, wizyta przekroczona o %3$d min</string>
+</resources>
