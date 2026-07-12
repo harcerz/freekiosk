@@ -31,6 +31,7 @@ import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import com.freekiosk.wear.comm.WatchComm
 import com.freekiosk.wear.data.WatchStateHolder
+import com.freekiosk.wear.notif.OngoingStatus
 import com.freekiosk.wear.notif.WatchNotifications
 import com.freekiosk.wear.ui.ChatScreen
 import com.freekiosk.wear.ui.DashboardScreen
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WatchNotifications.ensureChannels(this)
+        OngoingStatus.ensure(this, getString(R.string.ongoing_connected))
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED

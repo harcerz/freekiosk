@@ -5,7 +5,11 @@ import com.freekiosk.wear.comm.WatchComm
 import com.freekiosk.wear.data.ActionResult
 import com.freekiosk.wear.data.WatchStateHolder
 import com.freekiosk.wear.model.parseChatMessage
+import com.freekiosk.wear.notif.OngoingStatus
 import com.freekiosk.wear.notif.WatchNotifications
+import com.freekiosk.wear.tile.DentrioTileService
+import androidx.wear.tiles.TileService
+import com.freekiosk.wear.R
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMapItem
@@ -46,8 +50,10 @@ class WatchDataListenerService : WearableListenerService() {
                 Log.w(TAG, "Summary event failed: ${e.message}")
             }
         }
-        // Summary pushes double as a heartbeat — piggyback battery reporting.
+        // Summary pushes double as a heartbeat — piggyback battery reporting
+        // and keep the watchface-adjacent surfaces fresh.
         scope.launch { WatchComm.reportBatteryIfNeeded(applicationContext) }
+        refreshSurfaces()
     }
 
     override fun onMessageReceived(event: MessageEvent) {
@@ -75,6 +81,26 @@ class WatchDataListenerService : WearableListenerService() {
             } catch (e: Exception) {
                 Log.w(TAG, "Action result event failed: ${e.message}")
             }
+        }
+    }
+
+    /** Tile + ongoing-activity indicator follow the latest summary. */
+    private fun refreshSurfaces() {
+        try {
+            TileService.getUpdater(applicationContext)
+                .requestUpdate(DentrioTileService::class.java)
+        } catch (e: Exception) {
+            Log.w(TAG, "Tile update request failed: ${e.message}")
+        }
+        try {
+            val summary = WatchStateHolder.summary.value
+            OngoingStatus.ensure(
+                applicationContext,
+                summary?.roomName
+                    ?: applicationContext.getString(R.string.ongoing_connected),
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Ongoing status update failed: ${e.message}")
         }
     }
 

@@ -72,4 +72,12 @@ dependencies {
 
     implementation "com.google.android.gms:play-services-wearable:19.0.0"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0"
+
+    // Watchface-adjacent surfaces: tile (one swipe away) + ongoing-activity
+    // icon on the watchface itself.
+    implementation "androidx.wear.tiles:tiles:1.4.1"
+    implementation "androidx.wear.protolayout:protolayout:1.2.1"
+    implementation "androidx.wear.protolayout:protolayout-material:1.2.1"
+    implementation "androidx.wear:wear-ongoing:1.0.0"
+    implementation "com.google.guava:guava:33.3.1-android"
 }

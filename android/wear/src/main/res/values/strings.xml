@@ -31,6 +31,10 @@
 
     <!-- Notifications -->
     <string name="channel_chat">Czat gabinetu</string>
+    <string name="channel_status">Stan gabinetu</string>
+    <string name="tile_no_data">Brak danych z tabletu</string>
+    <string name="waiting_badge_tile">CZEKA w poczekalni</string>
+    <string name="ongoing_connected">Gabinet połączony</string>
     <string name="channel_alerts">Alerty gabinetu</string>
     <string name="overrun_alert_title">Pacjent czeka!</string>
     <string name="overrun_alert_body">%1$s czeka %2$d min, wizyta przekroczona o %3$d min</string>
