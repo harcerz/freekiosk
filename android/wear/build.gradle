@@ -80,4 +80,8 @@ dependencies {
     implementation "androidx.wear.protolayout:protolayout-material:1.2.1"
     implementation "androidx.wear:wear-ongoing:1.0.0"
     implementation "com.google.guava:guava:33.3.1-android"
+
+    // Custom clinic watchface (canvas). Jetpack Watch Face is fine here —
+    // the WFF-only rule applies to Play submissions, this APK is sideloaded.
+    implementation "androidx.wear.watchface:watchface:1.2.1"
 }
