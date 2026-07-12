@@ -61,6 +61,7 @@ object WatchStateHolder {
      */
     suspend fun loadInitial(context: Context) {
         if (_summary.value != null) return
+        Log.i(TAG, "loadInitial: reading persisted DataItems…")
         try {
             val buffer = Wearable.getDataClient(context).dataItems.await()
             try {
@@ -74,6 +75,7 @@ object WatchStateHolder {
             } finally {
                 buffer.release()
             }
+            Log.i(TAG, "loadInitial: done (have=${_summary.value != null})")
         } catch (e: Exception) {
             Log.w(TAG, "Initial summary load failed: ${e.message}")
         }

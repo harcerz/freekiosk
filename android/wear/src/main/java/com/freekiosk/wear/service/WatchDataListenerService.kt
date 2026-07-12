@@ -33,6 +33,7 @@ class WatchDataListenerService : WearableListenerService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onDataChanged(events: DataEventBuffer) {
+        Log.i(TAG, "onDataChanged: ${events.count} event(s)")
         for (event in events) {
             if (event.type != DataEvent.TYPE_CHANGED) continue
             if (event.dataItem.uri.path != PATH_SUMMARY) continue
@@ -50,6 +51,7 @@ class WatchDataListenerService : WearableListenerService() {
     }
 
     override fun onMessageReceived(event: MessageEvent) {
+        Log.i(TAG, "onMessageReceived: ${event.path}")
         when (event.path) {
             PATH_CHAT_MESSAGE -> try {
                 val payload = JSONObject(String(event.data, Charsets.UTF_8))

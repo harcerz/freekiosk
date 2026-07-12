@@ -27,8 +27,10 @@ object WatchComm {
     const val PATH_SUMMARY_REQUEST = "/watch/summary-request"
 
     private suspend fun send(context: Context, path: String, payload: JSONObject): Boolean {
+        Log.i(TAG, "send($path) — resolving nodes…")
         return try {
             val nodes = Wearable.getNodeClient(context).connectedNodes.await()
+            Log.i(TAG, "send($path): ${nodes.size} connected node(s)")
             if (nodes.isEmpty()) {
                 Log.w(TAG, "No connected tablet for $path")
                 return false
@@ -40,6 +42,7 @@ object WatchComm {
                     Wearable.getMessageClient(context)
                         .sendMessage(node.id, path, bytes)
                         .await()
+                    Log.i(TAG, "send($path) → ${node.displayName}: OK")
                     delivered = true
                 } catch (e: Exception) {
                     Log.w(TAG, "send $path → ${node.displayName} failed: ${e.message}")

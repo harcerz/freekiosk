@@ -67,9 +67,13 @@ class MainActivity : ComponentActivity() {
         // Seed from the persisted DataItem, ask the tablet for a fresh push
         // and piggyback a battery report.
         lifecycleScope.launch {
+            android.util.Log.i("WatchMain", "onResume: loadInitial")
             WatchStateHolder.loadInitial(applicationContext)
+            android.util.Log.i("WatchMain", "onResume: requestSummary")
             WatchComm.requestSummary(applicationContext)
+            android.util.Log.i("WatchMain", "onResume: reportBattery")
             WatchComm.reportBatteryIfNeeded(applicationContext)
+            android.util.Log.i("WatchMain", "onResume: chain done")
         }
     }
 }
