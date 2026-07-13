@@ -202,14 +202,26 @@ private fun layout(
         }
 
         next != null -> {
-            // Label carries the visit-type color when the summary provides one.
+            // Only the dot carries the visit-type color — the label stays gray.
+            val accent = parseAccentColor(next.categoryColor)
+            val label = line(
+                context,
+                context.getString(R.string.next_label, next.startTime),
+                Typography.TYPOGRAPHY_CAPTION1,
+                GRAY,
+            )
             column.addContent(
-                line(
-                    context,
-                    context.getString(R.string.next_label, next.startTime),
-                    Typography.TYPOGRAPHY_CAPTION1,
-                    parseAccentColor(next.categoryColor) ?: GRAY,
-                ),
+                if (accent != null) {
+                    LayoutElementBuilders.Row.Builder()
+                        .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
+                        .addContent(
+                            line(context, "● ", Typography.TYPOGRAPHY_CAPTION1, accent),
+                        )
+                        .addContent(label)
+                        .build()
+                } else {
+                    label
+                },
             )
             column.addContent(
                 line(context, next.patientName, Typography.TYPOGRAPHY_TITLE3, WHITE),

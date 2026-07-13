@@ -328,6 +328,8 @@ private fun CalmState(summary: WatchSummary) {
                 }
             }
             next != null -> {
+                // Just the dot carries the visit type here — the full type
+                // name is shown only for the current visit.
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -347,16 +349,6 @@ private fun CalmState(summary: WatchSummary) {
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                next.categoryName?.let { name ->
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = name,
-                        style = MaterialTheme.typography.caption1,
-                        color = Color.LightGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
             else -> Text(
                 text = context.getString(R.string.no_visits),
