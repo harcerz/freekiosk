@@ -104,6 +104,16 @@ private class DentrioRenderer(
         isAntiAlias = true
         textAlign = Paint.Align.CENTER
     }
+    private val dotPaint = Paint().apply { isAntiAlias = true }
+
+    /** #rrggbb from the summary → canvas color int; null on garbage. */
+    private fun parseAccentColor(hex: String?): Int? = hex?.let {
+        try {
+            Color.parseColor(it)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+    }
 
     init {
         // Seed after process start and repaint the face on every summary push.
@@ -180,6 +190,63 @@ private class DentrioRenderer(
                 )
             }
 
+            // The current visit stays on top even when someone already waits —
+            // an early arrival must not hide the ongoing visit.
+            current != null -> {
+                textPaint.textSize = w * 0.06f
+                textPaint.color = Color.WHITE
+                // "Name · type" when it fits, otherwise just the name.
+                val withType = current.categoryName?.let {
+                    "${current.patientName} · $it"
+                }
+                canvas.drawText(
+                    if (withType != null && textPaint.measureText(withType) <= w * 0.9f) {
+                        withType
+                    } else {
+                        current.patientName
+                    },
+                    cx,
+                    line1Y,
+                    textPaint,
+                )
+                textPaint.textSize = w * 0.05f
+                when {
+                    waiting != null -> {
+                        textPaint.color = 0xFFEF5350.toInt()
+                        val minutes = waiting.minutesWaiting
+                        canvas.drawText(
+                            if (minutes != null) {
+                                service.getString(
+                                    R.string.waiting_inline_minutes,
+                                    waiting.patientName,
+                                    minutes,
+                                )
+                            } else {
+                                service.getString(R.string.waiting_inline, waiting.patientName)
+                            },
+                            cx,
+                            line2Y,
+                            textPaint,
+                        )
+                    }
+                    current.minutesOverrun > 0 -> {
+                        textPaint.color = 0xFFEF5350.toInt()
+                        canvas.drawText(
+                            service.getString(R.string.overrun_format, current.minutesOverrun),
+                            cx,
+                            line2Y,
+                            textPaint,
+                        )
+                    }
+                    else -> {
+                        textPaint.color = Color.GRAY
+                        canvas.drawText(
+                            "${current.startTime}–${current.endTime}", cx, line2Y, textPaint,
+                        )
+                    }
+                }
+            }
+
             waiting != null -> {
                 textPaint.textSize = w * 0.065f
                 textPaint.color = 0xFFEF5350.toInt()
@@ -197,36 +264,21 @@ private class DentrioRenderer(
                 )
             }
 
-            current != null -> {
-                textPaint.textSize = w * 0.06f
-                textPaint.color = Color.WHITE
-                canvas.drawText(current.patientName, cx, line1Y, textPaint)
-                textPaint.textSize = w * 0.05f
-                if (current.minutesOverrun > 0) {
-                    textPaint.color = 0xFFEF5350.toInt()
-                    canvas.drawText(
-                        service.getString(R.string.overrun_format, current.minutesOverrun),
-                        cx,
-                        line2Y,
-                        textPaint,
-                    )
-                } else {
-                    textPaint.color = Color.GRAY
-                    canvas.drawText(
-                        "${current.startTime}–${current.endTime}", cx, line2Y, textPaint,
-                    )
-                }
-            }
-
             next != null -> {
                 textPaint.textSize = w * 0.05f
                 textPaint.color = Color.GRAY
-                canvas.drawText(
-                    service.getString(R.string.next_label, next.startTime),
-                    cx,
-                    line1Y,
-                    textPaint,
-                )
+                val nextLabel = service.getString(R.string.next_label, next.startTime)
+                canvas.drawText(nextLabel, cx, line1Y, textPaint)
+                parseAccentColor(next.categoryColor)?.let { accent ->
+                    dotPaint.color = accent
+                    val radius = w * 0.013f
+                    canvas.drawCircle(
+                        cx - textPaint.measureText(nextLabel) / 2f - radius * 2.2f,
+                        line1Y - textPaint.textSize * 0.32f,
+                        radius,
+                        dotPaint,
+                    )
+                }
                 textPaint.textSize = w * 0.06f
                 textPaint.color = Color.WHITE
                 canvas.drawText(next.patientName, cx, line2Y, textPaint)

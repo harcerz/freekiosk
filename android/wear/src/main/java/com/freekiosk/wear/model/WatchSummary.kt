@@ -25,6 +25,12 @@ data class WatchVisit(
     val startTime: String,
     val endTime: String,
     val minutesOverrun: Int,
+    /** Scheduled length in minutes (end − start). */
+    val durationMinutes: Int,
+    /** Visit-type (appointment category) name, e.g. "Higienizacja". */
+    val categoryName: String?,
+    /** Visit-type accent color (#rrggbb) — category color, else doctor color. */
+    val categoryColor: String?,
 )
 
 data class WatchNextAppointment(
@@ -33,6 +39,10 @@ data class WatchNextAppointment(
     val startTime: String,
     val isWaiting: Boolean,
     val minutesWaiting: Int?,
+    /** Visit-type (appointment category) name, e.g. "Higienizacja". */
+    val categoryName: String?,
+    /** Visit-type accent color (#rrggbb) — category color, else doctor color. */
+    val categoryColor: String?,
 )
 
 data class WatchChatMessage(
@@ -46,6 +56,10 @@ data class WatchChatMessage(
     val myReactions: Set<String>,
 )
 
+/** optString that maps both a missing key and JSON null to Kotlin null. */
+private fun JSONObject.optNullableString(name: String): String? =
+    if (isNull(name)) null else optString(name).takeIf { it.isNotBlank() }
+
 fun parseWatchSummary(json: JSONObject, updatedAtMs: Long): WatchSummary {
     val room = json.optJSONObject("room")
     val current = json.optJSONObject("currentVisit")?.let {
@@ -56,6 +70,9 @@ fun parseWatchSummary(json: JSONObject, updatedAtMs: Long): WatchSummary {
             startTime = it.optString("startTime"),
             endTime = it.optString("endTime"),
             minutesOverrun = it.optInt("minutesOverrun", 0),
+            durationMinutes = it.optInt("durationMinutes", 0),
+            categoryName = it.optNullableString("categoryName"),
+            categoryColor = it.optNullableString("categoryColor"),
         )
     }
     val next = json.optJSONObject("nextAppointment")?.let {
@@ -65,6 +82,8 @@ fun parseWatchSummary(json: JSONObject, updatedAtMs: Long): WatchSummary {
             startTime = it.optString("startTime"),
             isWaiting = it.optBoolean("isWaiting", false),
             minutesWaiting = if (it.isNull("minutesWaiting")) null else it.optInt("minutesWaiting"),
+            categoryName = it.optNullableString("categoryName"),
+            categoryColor = it.optNullableString("categoryColor"),
         )
     }
 

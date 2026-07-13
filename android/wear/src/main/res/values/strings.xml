@@ -8,9 +8,12 @@
     <string name="now_label">TERAZ</string>
     <string name="next_label">NASTĘPNY %1$s</string>
     <string name="no_visits">Brak wizyt</string>
+    <string name="duration_minutes">%1$d min</string>
     <string name="overrun_format">+%1$d min po czasie</string>
     <string name="waiting_title">CZEKA</string>
     <string name="waiting_minutes">czeka %1$d min</string>
+    <string name="waiting_inline">CZEKA: %1$s</string>
+    <string name="waiting_inline_minutes">CZEKA: %1$s · %2$d min</string>
     <string name="action_chat">Czat</string>
     <string name="action_sos">SOS</string>
     <string name="chat_section">Czat gabinetu</string>

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.material.Button
@@ -36,6 +38,7 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.freekiosk.wear.R
 import com.freekiosk.wear.data.WatchStateHolder
+import com.freekiosk.wear.model.WatchNextAppointment
 import com.freekiosk.wear.model.WatchSummary
 import kotlinx.coroutines.delay
 
@@ -44,6 +47,26 @@ private const val STALE_AFTER_MS = 3 * 60_000L
 private val WaitingRed = Color(0xFFB71C1C)
 private val AccentBlue = Color(0xFF41BDF5)
 private val WarnOrange = Color(0xFFFFB74D)
+
+/** #rrggbb from the summary → Compose color; null on garbage. */
+internal fun parseHexColor(hex: String?): Color? = hex?.let {
+    try {
+        Color(android.graphics.Color.parseColor(it))
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+}
+
+/** Visit-type accent dot; renders nothing without a parsable color. */
+@Composable
+private fun CategoryDot(colorHex: String?, size: Dp = 8.dp) {
+    val color = parseHexColor(colorHex) ?: return
+    Box(
+        modifier = Modifier
+            .size(size)
+            .background(color, CircleShape),
+    )
+}
 
 /**
  * Glanceable, non-scrolling entry screen: the room's single most important
@@ -67,6 +90,10 @@ fun DashboardScreen(
     }
 
     val waiting = summary?.nextAppointment?.takeIf { it.isWaiting }
+    // A waiting patient owns the whole screen ONLY when no visit is running —
+    // during a visit the current patient stays on top and CZEKA becomes an
+    // inline alert line (an early arrival must not hide the ongoing visit).
+    val fullScreenWaiting = waiting != null && summary?.currentVisit == null
     val pulse = rememberInfiniteTransition(label = "waitingPulse")
     val pulseAlpha by pulse.animateFloat(
         initialValue = 0.25f,
@@ -79,7 +106,7 @@ fun DashboardScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (waiting != null) WaitingRed.copy(alpha = pulseAlpha) else Color.Black,
+                if (fullScreenWaiting) WaitingRed.copy(alpha = pulseAlpha) else Color.Black,
             ),
     ) {
         Column(
@@ -103,7 +130,7 @@ fun DashboardScreen(
                         color = Color.Gray,
                         textAlign = TextAlign.Center,
                     )
-                    waiting != null -> WaitingState(summary!!)
+                    fullScreenWaiting -> WaitingState(summary!!)
                     else -> CalmState(summary!!)
                 }
             }
@@ -157,7 +184,7 @@ private fun RoomHeader(summary: WatchSummary?, nowMs: Long) {
     }
 }
 
-/** Patient already in the waiting room — the state that owns the screen. */
+/** Patient waiting with NO visit running — the state that owns the screen. */
 @Composable
 private fun WaitingState(summary: WatchSummary) {
     val context = LocalContext.current
@@ -184,18 +211,42 @@ private fun WaitingState(summary: WatchSummary) {
                 color = Color.White,
             )
         }
-        summary.currentVisit?.takeIf { it.minutesOverrun > 0 }?.let { visit ->
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = context.getString(R.string.overrun_format, visit.minutesOverrun),
-                style = MaterialTheme.typography.caption1,
-                color = Color(0xFFFFCDD2),
-            )
-        }
     }
 }
 
-/** No one waiting — show the current visit, else the next one, else quiet. */
+/**
+ * Pulsing red CZEKA line shown UNDER the current visit — a waiting early
+ * arrival alerts without hiding the ongoing visit.
+ */
+@Composable
+private fun WaitingInlineRow(next: WatchNextAppointment) {
+    val context = LocalContext.current
+    val pulse = rememberInfiniteTransition(label = "inlineWaitingPulse")
+    val alpha by pulse.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+        label = "inlineWaitingAlpha",
+    )
+    val minutes = next.minutesWaiting
+    Text(
+        text = if (minutes != null) {
+            context.getString(R.string.waiting_inline_minutes, next.patientName, minutes)
+        } else {
+            context.getString(R.string.waiting_inline, next.patientName)
+        },
+        style = MaterialTheme.typography.title3,
+        color = Color(0xFFEF5350).copy(alpha = alpha),
+        textAlign = TextAlign.Center,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/**
+ * Current visit first (with an inline red CZEKA line when someone already
+ * waits), else the next appointment, else quiet.
+ */
 @Composable
 private fun CalmState(summary: WatchSummary) {
     val context = LocalContext.current
@@ -219,10 +270,33 @@ private fun CalmState(summary: WatchSummary) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${current.startTime}–${current.endTime}",
+                    text = "${current.startTime}–${current.endTime}" +
+                        if (current.durationMinutes > 0) {
+                            " · " + context.getString(
+                                R.string.duration_minutes, current.durationMinutes,
+                            )
+                        } else {
+                            ""
+                        },
                     style = MaterialTheme.typography.body2,
                     color = Color.Gray,
                 )
+                current.categoryName?.let { name ->
+                    Spacer(Modifier.height(2.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        CategoryDot(current.categoryColor, size = 6.dp)
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.caption1,
+                            color = Color.LightGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 if (current.minutesOverrun > 0) {
                     Text(
                         text = context.getString(
@@ -234,21 +308,37 @@ private fun CalmState(summary: WatchSummary) {
                 }
                 next?.let {
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "→ ${it.startTime} ${it.patientName}",
-                        style = MaterialTheme.typography.caption1,
-                        color = Color.Gray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (it.isWaiting) {
+                        WaitingInlineRow(it)
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            CategoryDot(it.categoryColor, size = 6.dp)
+                            Text(
+                                text = "→ ${it.startTime} ${it.patientName}",
+                                style = MaterialTheme.typography.caption1,
+                                color = Color.Gray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
             }
             next != null -> {
-                Text(
-                    text = context.getString(R.string.next_label, next.startTime),
-                    style = MaterialTheme.typography.caption1,
-                    color = AccentBlue,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    CategoryDot(next.categoryColor)
+                    Text(
+                        text = context.getString(R.string.next_label, next.startTime),
+                        style = MaterialTheme.typography.caption1,
+                        color = AccentBlue,
+                    )
+                }
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = next.patientName,
@@ -257,6 +347,16 @@ private fun CalmState(summary: WatchSummary) {
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                next.categoryName?.let { name ->
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.caption1,
+                        color = Color.LightGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             else -> Text(
                 text = context.getString(R.string.no_visits),

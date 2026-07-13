@@ -90,6 +90,15 @@ private fun line(
         .setMaxLines(2)
         .build()
 
+/** #rrggbb from the summary → color int; null on garbage. */
+private fun parseAccentColor(hex: String?): Int? = hex?.let {
+    try {
+        android.graphics.Color.parseColor(it)
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+}
+
 private fun layout(
     context: Context,
     summary: WatchSummary?,
@@ -120,6 +129,54 @@ private fun layout(
             ),
         )
 
+        // The current visit stays on top even when someone already waits —
+        // an early arrival must not hide the ongoing visit.
+        current != null -> {
+            column.addContent(
+                line(
+                    context,
+                    context.getString(R.string.now_label) + " " + current.patientName,
+                    Typography.TYPOGRAPHY_TITLE3,
+                    WHITE,
+                ),
+            )
+            if (waiting != null) {
+                val minutes = waiting.minutesWaiting
+                column.addContent(
+                    line(
+                        context,
+                        if (minutes != null) {
+                            context.getString(
+                                R.string.waiting_inline_minutes, waiting.patientName, minutes,
+                            )
+                        } else {
+                            context.getString(R.string.waiting_inline, waiting.patientName)
+                        },
+                        Typography.TYPOGRAPHY_CAPTION1,
+                        ALERT_RED,
+                    ),
+                )
+            } else if (current.minutesOverrun > 0) {
+                column.addContent(
+                    line(
+                        context,
+                        context.getString(R.string.overrun_format, current.minutesOverrun),
+                        Typography.TYPOGRAPHY_CAPTION1,
+                        ALERT_RED,
+                    ),
+                )
+            } else if (next != null) {
+                column.addContent(
+                    line(
+                        context,
+                        "→ ${next.startTime} ${next.patientName}",
+                        Typography.TYPOGRAPHY_CAPTION1,
+                        GRAY,
+                    ),
+                )
+            }
+        }
+
         waiting != null -> {
             column.addContent(
                 line(
@@ -144,44 +201,20 @@ private fun layout(
             )
         }
 
-        current != null -> {
+        next != null -> {
+            // Label carries the visit-type color when the summary provides one.
             column.addContent(
                 line(
                     context,
-                    context.getString(R.string.now_label) + " " + current.patientName,
-                    Typography.TYPOGRAPHY_TITLE3,
-                    WHITE,
+                    context.getString(R.string.next_label, next.startTime),
+                    Typography.TYPOGRAPHY_CAPTION1,
+                    parseAccentColor(next.categoryColor) ?: GRAY,
                 ),
             )
-            if (current.minutesOverrun > 0) {
-                column.addContent(
-                    line(
-                        context,
-                        context.getString(R.string.overrun_format, current.minutesOverrun),
-                        Typography.TYPOGRAPHY_CAPTION1,
-                        ALERT_RED,
-                    ),
-                )
-            } else if (next != null) {
-                column.addContent(
-                    line(
-                        context,
-                        "→ ${next.startTime} ${next.patientName}",
-                        Typography.TYPOGRAPHY_CAPTION1,
-                        GRAY,
-                    ),
-                )
-            }
+            column.addContent(
+                line(context, next.patientName, Typography.TYPOGRAPHY_TITLE3, WHITE),
+            )
         }
-
-        next != null -> column.addContent(
-            line(
-                context,
-                context.getString(R.string.next_label, next.startTime) + "\n" + next.patientName,
-                Typography.TYPOGRAPHY_TITLE3,
-                WHITE,
-            ),
-        )
 
         else -> column.addContent(
             line(
