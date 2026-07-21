@@ -37,6 +37,9 @@ class HubModule(private val reactContext: ReactApplicationContext) :
         fun checkAndReconnect() {
             instance?.client?.checkAndReconnect()
         }
+
+        /** For HubForegroundService's post-kill recovery loop. */
+        fun isClientRunning(): Boolean = instance?.client?.isRunning() == true
     }
 
     init {
@@ -121,6 +124,9 @@ class HubModule(private val reactContext: ReactApplicationContext) :
             wearRelay = relay
             relay.start()
             hubClient.start()
+            // Foreground priority for the whole process: without it Android
+            // kills the hub + wear relay whenever another app is on top.
+            HubForegroundService.start(reactContext.applicationContext)
             Log.i(TAG, "Hub client started for $serverUrl (device $deviceId)")
             promise.resolve(true)
         } catch (e: Throwable) {
@@ -136,6 +142,7 @@ class HubModule(private val reactContext: ReactApplicationContext) :
             wearRelay = null
             client?.stop()
             client = null
+            HubForegroundService.stop(reactContext.applicationContext)
             Log.i(TAG, "Hub client stopped")
             promise.resolve(true)
         } catch (e: Exception) {
@@ -263,6 +270,10 @@ class HubModule(private val reactContext: ReactApplicationContext) :
             client?.stop()
             client = null
             instance = null
+            // Deliberate RN teardown — drop the foreground service too. A
+            // violent process kill skips this path, so the sticky service
+            // survives and runs its recovery loop.
+            HubForegroundService.stop(reactContext.applicationContext)
             Log.d(TAG, "HubModule cleaned up")
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup: ${e.message}")

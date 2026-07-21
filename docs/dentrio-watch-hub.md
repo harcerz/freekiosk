@@ -49,6 +49,12 @@ i `docs/processes/messenger/README.md` (sekcja „Kompan-zegarek gabinetu").
   `MqttSettingsSection.tsx` — status na żywo, test połączenia).
 - Keep-alive: FGS `START_STICKY` + hak `checkAndReconnect()` w `OverlayService`
   (obok MQTT) + start z `BootReceiver` + autostart w `KioskScreen` useEffect (~690-775).
+  ZAIMPLEMENTOWANE (2026-07-22) jako `hub/HubForegroundService.kt` (`specialUse`
+  subtype `clinic_hub`): startowany/zatrzymywany razem z hubem w `HubModule`,
+  trzyma priorytet procesu gdy inna apka jest na wierzchu (root-cause: kiosk
+  zabijał relay, wiadomości z zegarka szły w próżnię); po ubiciu procesu
+  START_STICKY wstaje z null intentem i — jeśli `@kiosk_hub_enabled` — relansuje
+  `MainActivity` (pętla co 30 s, cooldown 60 s), a autostart JS przywraca hub.
 - Data Layer paths (ZAIMPLEMENTOWANE — patrz `hub/WearRelay.kt` i moduł `:wear`):
   tablet→zegarek: `/watch/summary` (DataItem urgent, pełny JSON summary + `updatedAt`;
   push przy zmianie + keepalive 5 min), `/watch/chat-message` (Message, „nowa

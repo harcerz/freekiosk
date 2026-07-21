@@ -177,6 +177,19 @@
           android:value="background_app_monitor"/>
       </service>
 
+      <!-- DenTRIO clinic hub: foreground priority for the watch relay so the
+           process is not killed while another app is on top; recovers the hub
+           after an OOM kill (START_STICKY + MainActivity relaunch) -->
+      <service
+        android:name=".hub.HubForegroundService"
+        android:enabled="true"
+        android:exported="false"
+        android:foregroundServiceType="specialUse">
+        <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="clinic_hub"/>
+      </service>
+
       <!-- Watchdog service: restarts FreeKiosk after OOM kill (#96) -->
       <service
         android:name=".KioskWatchdogService"
