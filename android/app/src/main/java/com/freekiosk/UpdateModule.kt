@@ -198,6 +198,9 @@ class UpdateModule(reactContext: ReactApplicationContext) : ReactContextBaseJava
                 android.util.Log.d("UpdateModule", "Checking updates from custom server: $manifestUrl")
 
                 val connection = URL(manifestUrl).openConnection() as HttpURLConnection
+                // Custom update server = the clinic portal, often self-signed —
+                // honor certificates the user accepted in the kiosk WebView.
+                com.freekiosk.net.AcceptedCertTrust.configure(connection, reactApplicationContext)
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 10000
                 connection.readTimeout = 10000

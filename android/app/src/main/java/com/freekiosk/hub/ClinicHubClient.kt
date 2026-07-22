@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.util.Log
+import com.freekiosk.net.AcceptedCertTrust
 import io.socket.client.IO
 import io.socket.client.Socket
 import okhttp3.Cookie
@@ -113,6 +114,11 @@ class ClinicHubClient(
         })
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
+        // Trust certificates the user accepted in the kiosk WebView
+        // (self-signed clinic servers) — same store, same rules.
+        .let { builder ->
+            context?.let { AcceptedCertTrust.configure(builder, it) } ?: builder
+        }
         .build()
 
     private var socket: Socket? = null
@@ -475,6 +481,10 @@ class ClinicHubClient(
             reconnectionDelay = 2000
             reconnectionDelayMax = 30000
             transports = arrayOf("websocket", "polling")
+            // Route Socket.IO through the hub's OkHttp client so user-accepted
+            // (self-signed) certificates work for the realtime link too.
+            callFactory = http
+            webSocketFactory = http
         }
         val s = IO.socket(URI.create(config.socketUrl), options)
         socket = s
