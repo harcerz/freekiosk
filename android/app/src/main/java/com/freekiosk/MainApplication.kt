@@ -6,9 +6,11 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.facebook.react.modules.network.OkHttpClientProvider
 import com.freekiosk.api.HttpServerPackage
 import com.freekiosk.hub.HubPackage
 import com.freekiosk.mqtt.MqttPackage
+import com.freekiosk.net.AcceptedCertTrust
 
 class MainApplication : Application(), ReactApplication {
 
@@ -46,6 +48,15 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    // Certificates accepted once in the kiosk WebView (self-signed clinic
+    // servers) must be trusted app-wide — otherwise JS fetch (QR pairing)
+    // fails with "Network request failed" while the WebView works fine.
+    OkHttpClientProvider.setOkHttpClientFactory {
+      AcceptedCertTrust.configure(
+        OkHttpClientProvider.createClientBuilder(this),
+        this,
+      ).build()
+    }
     loadReactNative(this)
   }
 }
