@@ -40,6 +40,7 @@ import {
   SecurityTab,
   AdvancedTab,
   DashboardTab,
+  DentrioTab,
 } from './tabs';
 import { RecurringEventEditor, OneTimeEventEditor } from '../../components/settings';
 import ScreenScheduleRuleEditor from '../../components/settings/ScreenScheduleRuleEditor';
@@ -66,6 +67,7 @@ const TABS: { id: string; label: string; icon: IconName }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'view-dashboard' },
   { id: 'display', label: 'Display', icon: 'monitor' },
   { id: 'security', label: 'Security', icon: 'shield-lock' },
+  { id: 'dentrio', label: 'DenTRIO', icon: 'cellphone-link' },
   { id: 'advanced', label: 'Advanced', icon: 'cog' },
 ];
 
@@ -2117,6 +2119,9 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
           />
         );
       
+      case 'dentrio':
+        return <DentrioTab />;
+
       case 'advanced':
         return (
           <AdvancedTab
@@ -2223,8 +2228,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       >
         {renderTab()}
         
-        {/* Save Button - Always visible */}
-        {activeTab !== 'advanced' && (
+        {/* Save Button - hidden on self-saving tabs (Advanced, DenTRIO) */}
+        {activeTab !== 'advanced' && activeTab !== 'dentrio' && (
           <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
             <Text style={styles.saveButtonText}>💾 Save</Text>
           </TouchableOpacity>
