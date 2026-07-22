@@ -30,6 +30,9 @@ import {
 import { hubClient } from './HubModule';
 import { ApiService } from './ApiService';
 import { httpServer } from './HttpServerModule';
+import CertificateModule, {
+  ServerCertificateInfo,
+} from './CertificateModule';
 
 const PAIRING_PENDING_KEY = '@kiosk_pairing_pending';
 const DEFAULT_REST_PORT = 8080;
@@ -120,6 +123,42 @@ function generateApiKey(): string {
   return key;
 }
 
+/**
+ * TLS preflight for the pairing flow. Returns the certificate info when the
+ * clinic server presents a certificate that still NEEDS user acceptance
+ * (self-signed / private CA), and null when the connection is already
+ * trusted (system CA, previously accepted, or plain http). The caller shows
+ * the accept dialog and calls [acceptServerCertificate] before pairing.
+ *
+ * A probe failure resolves to null — pairing then proceeds and surfaces the
+ * real network error with the existing message.
+ */
+export async function checkServerCertificate(
+  serverUrl: string,
+): Promise<ServerCertificateInfo | null> {
+  if (!serverUrl.startsWith('https://')) {
+    return null;
+  }
+  try {
+    const info = await CertificateModule.fetchServerCertificate(serverUrl);
+    return info.trusted ? null : info;
+  } catch (error) {
+    console.warn('[Pairing] Certificate probe failed:', error);
+    return null;
+  }
+}
+
+/** Persist acceptance — same store the WebView SSL dialog uses (1 year). */
+export async function acceptServerCertificate(
+  info: ServerCertificateInfo,
+  serverUrl: string,
+): Promise<void> {
+  if (!info.fingerprint) {
+    throw new Error('Certificate fingerprint missing');
+  }
+  await CertificateModule.acceptCertificate(info.fingerprint, serverUrl);
+}
+
 async function verifyQrToken(
   serverUrl: string,
   token: string,
@@ -166,6 +205,11 @@ async function applyPendingConfig(config: PendingPairingConfig): Promise<void> {
   await StorageService.saveRestApiPort(config.restApiPort);
   await StorageService.saveRestApiAllowControl(true);
   await StorageService.savePairedLabel(config.label);
+  // App updates come from the clinic portal from now on — the panel serves
+  // the manifest + APK (Settings → Tablets, upload), see stoma B4.
+  await StorageService.saveCustomUpdateUrl(
+    `${config.serverUrl}/api/tablets/app-update/manifest`,
+  );
 }
 
 /**
@@ -298,6 +342,7 @@ export async function unpair(): Promise<void> {
   await StorageService.saveRestApiEnabled(false);
   await StorageService.savePairedLabel('');
   await StorageService.saveUrl('');
+  await StorageService.saveCustomUpdateUrl('');
   await AsyncStorage.removeItem(PAIRING_PENDING_KEY);
   try {
     await CookieManager.clearAll(true);

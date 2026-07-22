@@ -14,7 +14,6 @@ import {
 } from '../../../components/settings';
 import { ApiSettingsSection } from '../../../components/ApiSettingsSection';
 import { MqttSettingsSection } from '../../../components/MqttSettingsSection';
-import { ClinicHubSettingsSection } from '../../../components/ClinicHubSettingsSection';
 import { CertificateInfo } from '../../../utils/CertificateModule';
 import AccessibilityModule from '../../../utils/AccessibilityModule';
 import { Colors, Spacing, Typography } from '../../../theme';
@@ -248,9 +247,7 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
 
       {/* MQTT - Home Assistant Integration */}
       <MqttSettingsSection />
-
-      {/* Dentrio Clinic Hub - smartwatch relay */}
-      <ClinicHubSettingsSection />
+      {/* Dentrio Clinic Hub moved to the dedicated DenTRIO tab */}
 
       {/* Accessibility Service - Hidden in Play Store builds (BIND_ACCESSIBILITY_SERVICE policy) */}
       {enableSelfUpdate && (

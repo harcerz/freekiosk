@@ -8,6 +8,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -23,9 +24,40 @@ import {
   useCodeScanner,
 } from 'react-native-vision-camera';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { parseClinicQr, pairWithClinic } from '../utils/PairingService';
+import {
+  acceptServerCertificate,
+  checkServerCertificate,
+  parseClinicQr,
+  pairWithClinic,
+} from '../utils/PairingService';
+import type { ServerCertificateInfo } from '../utils/CertificateModule';
 
 type PairingStatus = 'scanning' | 'pairing' | 'success' | 'error';
+
+/** Native confirm dialog for a not-yet-trusted clinic certificate. */
+function confirmCertificate(
+  cert: ServerCertificateInfo,
+  serverUrl: string,
+): Promise<boolean> {
+  return new Promise(resolve => {
+    Alert.alert(
+      'Server certificate',
+      `${serverUrl} uses a certificate that is not trusted by the system ` +
+        '(e.g. self-signed).\n\n' +
+        `Subject: ${cert.subject ?? '—'}\n` +
+        `Issuer: ${cert.issuer ?? '—'}\n` +
+        `Valid until: ${cert.validUntil ?? '—'}\n\n` +
+        `SHA-256 fingerprint:\n${cert.fingerprintFormatted ?? cert.fingerprint ?? '—'}\n\n` +
+        'Only continue if this is your clinic server. The certificate will ' +
+        'be trusted for 1 year (WebView, pairing, hub and updates).',
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Trust & continue', onPress: () => resolve(true) },
+      ],
+      { cancelable: false },
+    );
+  });
+}
 
 const PairingScreen: React.FC = () => {
   const navigation =
@@ -68,6 +100,21 @@ const PairingScreen: React.FC = () => {
       setStatus('pairing');
       setMessage(null);
       try {
+        // First contact with a self-signed clinic server: ask the user to
+        // trust the certificate HERE (same store as the WebView SSL dialog)
+        // instead of requiring a manual WebView visit first. The one-time QR
+        // token is untouched until the user agrees.
+        const cert = await checkServerCertificate(payload.serverUrl);
+        if (cert) {
+          const trust = await confirmCertificate(cert, payload.serverUrl);
+          if (!trust) {
+            setStatus('error');
+            setMessage('Certificate rejected — pairing cancelled.');
+            return;
+          }
+          await acceptServerCertificate(cert, payload.serverUrl);
+        }
+
         const { label } = await pairWithClinic(payload);
         setPairedLabel(label);
         setStatus('success');
