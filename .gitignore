@@ -92,6 +92,8 @@ release-builds/
 *.apk
 *.aab
 !app-release.apk
+# DenTRIO: gotowe APK do instalacji ADB (apk/README.md)
+!apk/*.apk
 android/gradle.properties
 launch.md
 ROADMAP.md
