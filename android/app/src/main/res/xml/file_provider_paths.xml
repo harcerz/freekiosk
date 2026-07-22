@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shared paths for installing self-downloaded APK updates
+     (getExternalFilesDir(DIRECTORY_DOWNLOADS) = external-files Download/) -->
+<paths>
+    <external-files-path name="downloads" path="Download/" />
+</paths>

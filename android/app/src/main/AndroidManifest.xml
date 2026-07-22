@@ -207,6 +207,19 @@
         android:enabled="${updateReceiverEnabled}"
         android:exported="true" />
 
+      <!-- FileProvider for installing self-downloaded APK updates (OkHttp
+           download honors user-accepted certificates; the system installer
+           reads the file through this provider) -->
+      <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.fileprovider"
+        android:exported="false"
+        android:grantUriPermissions="true">
+        <meta-data
+          android:name="android.support.FILE_PROVIDER_PATHS"
+          android:resource="@xml/file_provider_paths" />
+      </provider>
+
       <!-- Receiver for screen sleep scheduler alarms -->
       <receiver
         android:name=".ScreenSchedulerReceiver"

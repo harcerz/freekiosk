@@ -107,6 +107,7 @@ class KioskHttpServer(
                 isGetOrPost && uri == "/api/screensaver/on" -> handleScreensaverOn()
                 isGetOrPost && uri == "/api/screensaver/off" -> handleScreensaverOff()
                 isGetOrPost && uri == "/api/reload" -> handleReload()
+                isGetOrPost && uri == "/api/update/check" -> handleUpdateCheck()
                 isGetOrPost && uri == "/api/wake" -> handleWake()
                 isGetOrPost && uri == "/api/reboot" -> handleReboot()
                 isGetOrPost && uri == "/api/clearCache" -> handleClearCache()
@@ -314,6 +315,19 @@ class KioskHttpServer(
     private fun handleReload(): Response {
         checkControlAllowed()?.let { return it }
         val result = commandHandler("reload", null)
+        return jsonSuccess(result)
+    }
+
+    /**
+     * Remote update trigger (clinic panel "Zarządzaj"): checks the configured
+     * clinic update server and installs when a newer version is available
+     * (silent under Device Owner, otherwise the system install prompt shows
+     * on the tablet). Fire-and-forget — progress lands in logcat and the new
+     * version reaches the panel via the next report-status.
+     */
+    private fun handleUpdateCheck(): Response {
+        checkControlAllowed()?.let { return it }
+        val result = commandHandler("updateCheck", null)
         return jsonSuccess(result)
     }
 

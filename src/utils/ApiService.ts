@@ -231,6 +231,16 @@ class ApiServiceClass {
             this.callbacks.onReload();
           }
           break;
+
+        case 'updateCheck':
+          // Remote update trigger (clinic panel → /api/update/check). Runs
+          // headless — result goes to the log; the panel reads the new
+          // version from the next report-status after the app restarts.
+          import('./ClinicUpdateService')
+            .then(svc => svc.checkAndInstallClinicUpdate())
+            .then(result => console.log('[API] updateCheck:', result))
+            .catch(e => console.error('[API] updateCheck failed:', e));
+          break;
           
         case 'setUrl':
           if (this.callbacks.onSetUrl && params.url) {
