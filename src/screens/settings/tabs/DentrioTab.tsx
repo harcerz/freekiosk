@@ -5,12 +5,21 @@
  * so this tab is a thin host that keeps clinic settings out of Advanced.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { ClinicHubSettingsSection } from '../../../components/ClinicHubSettingsSection';
+import UpdateService from '../../../utils/UpdateModule';
 import { Colors, Spacing, Typography } from '../../../theme';
 
 const DentrioTab: React.FC = () => {
+  const [version, setVersion] = useState<string>('');
+
+  useEffect(() => {
+    UpdateService.getCurrentVersion()
+      .then(info => setVersion(info.versionName))
+      .catch(() => setVersion(''));
+  }, []);
+
   return (
     <View>
       <ClinicHubSettingsSection />
@@ -19,6 +28,7 @@ const DentrioTab: React.FC = () => {
         tablet, the watch hub and app updates automatically. App updates are
         served by the clinic portal after pairing.
       </Text>
+      {version ? <Text style={styles.version}>DenTRIO v{version}</Text> : null}
     </View>
   );
 };
@@ -29,6 +39,13 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: Spacing.sm,
     marginHorizontal: Spacing.md,
+  },
+  version: {
+    ...Typography.labelSmall,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
   },
 });
 
